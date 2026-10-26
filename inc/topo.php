@@ -3,6 +3,10 @@ $pg = basename($_SERVER['PHP_SELF']); $f = flash();
 $pend = eh_admin() ? (int)db()->query("SELECT COUNT(*) FROM usuarios WHERE status = 'pendente'")->fetchColumn() : 0;
 // Menu por módulo: cada módulo só aparece para quem tem um perfil dele (o Administrador vê todos).
 $modulos = [];
+if (pode_ver_ia()) {
+    $modulos['Sugestões da IA'] = ['ia.php' => 'Alertas e sugestões'];
+    if (eh_admin()) $modulos['Sugestões da IA']['ia_config.php'] = 'Configuração';
+}
 if (pode_ver_tours()) $modulos['Tour'] = ['painel.php' => 'Painel', 'tours.php' => 'Tours vendidos', 'relatorio.php' => 'Relatório mensal', 'guias.php' => 'Guias / Sommeliers'];
 if (pode_ver_crm()) {
     $modulos['CRM'] = ['crm_painel.php' => 'Painel de clientes', 'clientes.php' => 'Clientes', 'crm_grupos.php' => 'Grupos de campanha'];
@@ -25,7 +29,7 @@ if (eh_admin()) $modulos['Administração'] = ['usuarios.php' => 'Controle de ac
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($titulo ?? APP_NOME) ?> · <?= e(APP_NOME) ?></title>
-<link rel="stylesheet" href="assets/estilo.css?v=8.1">
+<link rel="stylesheet" href="assets/estilo.css?v=9.0">
 </head>
 <body>
 <div class="app">

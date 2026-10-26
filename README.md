@@ -32,4 +32,4 @@ Variável opcional `FTP_PROTOCOL`: o padrão é `ftps` (senha criptografada). Se
 ## Banco de dados
 
 As migrações ficam em `sql/` e são rodadas à mão no phpMyAdmin, sempre depois de exportar um backup.
-Já aplicadas em produção: até a v8. Pendente: v9 (módulo de Vendas: produtos, vendas, itens e vínculos de clientes do ERP).
+Já aplicadas em produção: até a v9. Pendente: v10 (Sugestões da IA: cartões de alerta, análises, datas comemorativas, configurações e perfis de gerente). Tarefas cron: ver ia_config.php.

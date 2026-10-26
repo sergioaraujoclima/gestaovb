@@ -37,7 +37,7 @@ $lista = $pdo->query("SELECT * FROM usuarios ORDER BY FIELD(status,'pendente','a
 $titulo = 'Controle de acesso';
 require __DIR__ . '/inc/topo.php';
 ?>
-<p class="sub">Cada módulo tem seus perfis e só quem tem o perfil vê o módulo no menu; o Administrador vê tudo. Tour: Cadastrador (inclui e altera tours e guias) e Consulta. CRM: Marketing (clientes, grupos de campanha, categorias e exportações) e Consulta. CD: Cadastrador (vinícolas, motoristas e entregas), Motorista (vê e confirma as próprias entregas) e Consulta. Os perfis podem ser acumulados.</p>
+<p class="sub">Cada módulo tem seus perfis e só quem tem o perfil vê o módulo no menu; o Administrador vê tudo. Tour: Cadastrador (inclui e altera tours e guias) e Consulta. CRM: Marketing (clientes, grupos de campanha, categorias e exportações) e Consulta. CD: Cadastrador (vinícolas, motoristas e entregas), Motorista (vê e confirma as próprias entregas) e Consulta. Sugestões da IA: Gerente geral (vê os alertas de todas as áreas), Gerente comercial B2B, Gerente comercial B2C e Gerente de enoturismo e eventos (cada um vê os da sua área e recebe os e-mails). Os perfis podem ser acumulados: um gerente que também deve ver vendas ou clientes precisa do perfil do módulo (por exemplo, CRM · Consulta).</p>
 <div class="cartao rolagem">
 <table>
   <thead><tr><th>Nome</th><th>E-mail</th><th>Situação</th><th>Perfil</th><th>Cadastro</th><th></th></tr></thead>

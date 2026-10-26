@@ -2,7 +2,7 @@
 define('INICIO_PAGINA', microtime(true));
 require __DIR__ . '/config.php';
 define('APP_NOME', 'Gestão Vinícola Brasília');
-define('APP_VERSAO', '8.1');
+define('APP_VERSAO', '9.0');
 define('DIR_COMPROVANTES', dirname(__DIR__) . '/uploads/comprovantes');
 date_default_timezone_set('America/Sao_Paulo');
 
@@ -59,7 +59,8 @@ function lista_perfis() {
     return ['admin' => 'Administrador',
             'cadastrador' => 'Tour · Cadastrador', 'consulta_tour' => 'Tour · Consulta',
             'marketing' => 'CRM · Marketing', 'consulta_crm' => 'CRM · Consulta',
-            'cadastrador_cd' => 'CD · Cadastrador', 'motorista_cd' => 'CD · Motorista', 'consulta_cd' => 'CD · Consulta'];
+            'cadastrador_cd' => 'CD · Cadastrador', 'motorista_cd' => 'CD · Motorista', 'consulta_cd' => 'CD · Consulta',
+            'gerente_geral' => 'Gerente geral', 'gerente_b2b' => 'Gerente comercial B2B', 'gerente_b2c' => 'Gerente comercial B2C', 'gerente_enoturismo' => 'Gerente de enoturismo e eventos'];
 }
 function perfil() { return (string)($GLOBALS['USUARIO']['perfil'] ?? ''); }
 // O antigo perfil "Consulta" valia para Tour e CD: continua valendo como os dois perfis de consulta.
@@ -84,6 +85,7 @@ function pagina_inicial() {
     if (pode_ver_tours()) return 'painel.php';
     if (pode_ver_cd()) return 'cd_painel.php';
     if (function_exists('pode_ver_crm') && pode_ver_crm()) return 'crm_painel.php';
+    if (function_exists('pode_ver_ia') && pode_ver_ia()) return 'ia.php';
     return 'sair.php';
 }
 function negar() { flash('Seu perfil não permite esta ação.', 'erro'); ir(pagina_inicial()); }
