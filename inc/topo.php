@@ -9,6 +9,10 @@ if (pode_ver_crm()) {
     if (pode_gerir_grupos()) $modulos['CRM']['crm_categorias.php'] = 'Categorias';
     if (eh_admin()) $modulos['CRM']['crm_importar.php'] = 'Importar clientes';
 }
+if (pode_ver_vendas()) {
+    $modulos['Vendas'] = ['vendas_painel.php' => 'Painel de vendas', 'vendas_lista.php' => 'Vendas', 'vendas_produtos.php' => 'Produtos'];
+    if (pode_importar_vendas()) $modulos['Vendas']['vendas_importar.php'] = 'Importar vendas';
+}
 if (pode_ver_cd()) {
     $modulos['Centro de Distribuição'] = ['cd_painel.php' => 'Entregas do dia', 'cd_entregas.php' => 'Entregas'];
     if (pode_ver_cd_gestao()) $modulos['Centro de Distribuição'] += ['cd_extrato.php' => 'Extrato mensal', 'cd_vinicolas.php' => 'Vinícolas', 'cd_motoristas.php' => 'Motoristas'];
@@ -21,7 +25,7 @@ if (eh_admin()) $modulos['Administração'] = ['usuarios.php' => 'Controle de ac
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($titulo ?? APP_NOME) ?> · <?= e(APP_NOME) ?></title>
-<link rel="stylesheet" href="assets/estilo.css?v=7.0">
+<link rel="stylesheet" href="assets/estilo.css?v=8.0">
 </head>
 <body>
 <div class="app">

@@ -359,6 +359,15 @@ require __DIR__ . '/inc/topo.php';
     <?php if ($ed_ok): ?><div class="l4 acoes"><button type="submit">Salvar</button></div><?php endif; ?>
   </fieldset></form>
 
+  <?php $comp = $ed['id'] && pode_ver_vendas() ? vendas_resumo_cliente($ed['id']) : null; if ($comp && ($comp['n'] || $comp['ultimas'])): ?>
+  <h2>Compras <small>vendas do ERP · <a href="vendas_lista.php?cliente=<?= (int)$ed['id'] ?>">ver todas</a></small></h2>
+  <p class="sub"><?= (int)$comp['n'] ?> compra(s) · total <?= brl($comp['total']) ?><?= $comp['n'] ? ' · ticket médio ' . brl($comp['total'] / $comp['n']) . ' · primeira em ' . data_br($comp['primeira']) . ' · última em ' . data_br($comp['ultima']) : '' ?><?= $comp['bonif'] > 0 ? ' · recebeu ' . brl($comp['bonif']) . ' em bonificações/amostras' : '' ?></p>
+  <?php if ($comp['produtos']): ?><p class="sub">Mais comprados: <?= e(implode(' · ', array_map(fn($x) => $x['produto'] . ' (' . number_format((float)$x['qtd'], 0, ',', '.') . ')', $comp['produtos']))) ?></p><?php endif; ?>
+  <div class="cartao rolagem"><table>
+    <thead><tr><th>Data</th><th>Documento</th><th>Vendedor</th><th class="num">Itens</th><th class="num">Valor</th></tr></thead>
+    <tbody><?php foreach ($comp['ultimas'] as $cv): ?><tr><td><?= data_br($cv['data']) ?></td><td><a href="vendas_lista.php?ver=<?= (int)$cv['id'] ?>"><?= e($cv['documento']) ?></a></td><td><?= e($cv['vendedor']) ?></td><td class="num"><?= rtrim(rtrim(number_format((float)$cv['itens_qtd'], 3, ',', '.'), '0'), ',') ?></td><td class="num"><?= brl($cv['valor_total']) ?><?= $cv['valor_bonificacao'] > 0 ? ' <span class="tag pend">+ bonif. ' . brl($cv['valor_bonificacao']) . '</span>' : '' ?></td></tr><?php endforeach; ?></tbody>
+  </table></div>
+  <?php endif; ?>
   <?php if ($ed['id']): ?>
   <h2>Grupos de campanha</h2>
   <div class="grupos-cli">

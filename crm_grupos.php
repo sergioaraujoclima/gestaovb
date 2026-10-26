@@ -166,7 +166,7 @@ require __DIR__ . '/inc/topo.php';
     var d = C[campo];
     d.ops.forEach(function (o) { var x = el('option', {value: o}); x.textContent = OPS[o]; if (o === vOp) x.selected = true; op.appendChild(x); });
     var ctl;
-    if (d.tipo === 'enum' || d.tipo === 'etiqueta') {
+    if (d.tipo === 'enum' || d.tipo === 'etiqueta' || d.tipo === 'lista') {
       ctl = el('select', {name: 'valor[]'});
       var pares = d.tipo === 'etiqueta' ? ETQ : Object.keys(d.opcoes).map(function (k) { return [k, d.opcoes[k]]; });
       pares.forEach(function (p) { var x = el('option', {value: p[0]}); x.textContent = p[1]; if (String(p[0]) === String(vVal)) x.selected = true; ctl.appendChild(x); });

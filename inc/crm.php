@@ -243,7 +243,7 @@ function crm_ler_xlsx($caminho) {
     if (!class_exists('ZipArchive')) throw new RuntimeException('O servidor não lê .xlsx (extensão zip do PHP desligada). Salve a planilha como CSV.');
     $z = new ZipArchive();
     if ($z->open($caminho) !== true) throw new RuntimeException('Não foi possível abrir a planilha .xlsx.');
-    $txt = function ($no) { $t = ''; foreach ($no->xpath('.//*[local-name()="t"]') as $x) $t .= (string)$x; return $t; };
+    $txt = function ($no) { $t = ''; foreach ((array)$no->xpath('.//*[local-name()="t"]') as $x) $t .= (string)$x; return $t; };
     $comp = [];
     if (($ss = $z->getFromName('xl/sharedStrings.xml')) !== false) foreach (simplexml_load_string($ss)->si as $si) $comp[] = $txt($si);
     $alvo = 'xl/worksheets/sheet1.xml';
@@ -576,7 +576,9 @@ function crm_desfazer($lote) {
     if (!$imp || $imp['status'] !== 'concluida') return null;
     $pdo->beginTransaction();
     try {
-        $s = $pdo->prepare('SELECT id, nome FROM clientes WHERE importacao_id = ? AND NOT EXISTS (SELECT 1 FROM tour_vendas v WHERE v.cliente_id = clientes.id)');
+        // Fica quem já tem tour ou compra registrada (vendas do ERP).
+        $s = $pdo->prepare('SELECT id, nome FROM clientes WHERE importacao_id = ? AND NOT EXISTS (SELECT 1 FROM tour_vendas v WHERE v.cliente_id = clientes.id)'
+            . (vendas_v9() ? ' AND NOT EXISTS (SELECT 1 FROM vendas vd WHERE vd.cliente_id = clientes.id)' : ''));
         $s->execute([$lote]); $apagar = $s->fetchAll();
         $del = $pdo->prepare('DELETE FROM clientes WHERE id = ?');
         $delE = $pdo->prepare('DELETE FROM crm_cliente_etiqueta WHERE cliente_id = ?');
@@ -585,7 +587,7 @@ function crm_desfazer($lote) {
         $s = $pdo->prepare('SELECT COUNT(*) FROM clientes WHERE importacao_id = ?'); $s->execute([$lote]); $ficaram = (int)$s->fetchColumn();
         $pdo->prepare("UPDATE crm_importacoes SET status = 'desfeita', desfeita_em = ?, desfeita_por = ? WHERE id = ?")
             ->execute([date('Y-m-d H:i:s'), $GLOBALS['USUARIO']['nome'], $lote]);
-        registrar_log('importacao', $lote, 'Importação desfeita', count($apagar) . ' clientes removidos' . ($ficaram ? '; ' . $ficaram . ' mantidos por já terem tour' : '') . '; atualizações em clientes antigos mantidas');
+        registrar_log('importacao', $lote, 'Importação desfeita', count($apagar) . ' clientes removidos' . ($ficaram ? '; ' . $ficaram . ' mantidos por já terem tour ou compra' : '') . '; atualizações em clientes antigos mantidas');
         $pdo->commit();
         return [count($apagar), $ficaram];
     } catch (Throwable $ex) { $pdo->rollBack(); throw $ex; }
@@ -655,3 +657,4 @@ function crm_classificar_faltantes() {
 }
 
 require_once __DIR__ . '/grupos.php';
+require_once __DIR__ . '/vendas.php';

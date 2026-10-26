@@ -2,7 +2,7 @@
 define('INICIO_PAGINA', microtime(true));
 require __DIR__ . '/config.php';
 define('APP_NOME', 'Gestão Vinícola Brasília');
-define('APP_VERSAO', '7.0');
+define('APP_VERSAO', '8.0');
 define('DIR_COMPROVANTES', dirname(__DIR__) . '/uploads/comprovantes');
 date_default_timezone_set('America/Sao_Paulo');
 
@@ -189,7 +189,7 @@ function pode_alterar_tour($v) {
 
 // ---------- Trilha de auditoria ----------
 function linha($tabela, $id) {
-    if (!in_array($tabela, ['clientes', 'guias', 'tour_vendas', 'usuarios', 'cd_vinicolas', 'cd_motoristas', 'cd_entregas'], true)) return null;
+    if (!in_array($tabela, ['clientes', 'guias', 'tour_vendas', 'usuarios', 'cd_vinicolas', 'cd_motoristas', 'cd_entregas', 'produtos', 'vendas'], true)) return null;
     $s = db()->prepare("SELECT * FROM $tabela WHERE id = ?");
     $s->execute([(int)$id]);
     return $s->fetch() ?: null;
@@ -213,6 +213,7 @@ function valor_legivel($campo, $v) {
     if ($campo === 'categoria_id') return nome_categoria($v);
     if ($campo === 'categoria_auto') return $v ? 'Sim' : 'Não';
     if ($campo === 'sexo') return nome_sexo($v);
+    if ($campo === 'tipo' && function_exists('tipos_produto') && isset(tipos_produto()[$v])) return nome_tipo_produto($v);
     if ($campo === 'tipo_pessoa') return $v === 'PJ' ? 'Pessoa jurídica' : 'Pessoa física';
     if ($campo === 'aceita_whatsapp' || $campo === 'aceita_email') return nome_aceite($v);
     if ($campo === 'sexo_presumido') return $v ? 'Sim' : 'Não';
@@ -245,7 +246,7 @@ function diff_log($antes, $depois) {
         'entregue_em' => 'Entregue em', 'obs_motorista' => 'Observação do motorista',
         'rg' => 'RG', 'cep' => 'CEP', 'origem' => 'Origem', 'interesses' => 'Interesses', 'ultima_interacao' => 'Última interação',
         'categoria_id' => 'Categoria', 'categoria_auto' => 'Categoria automática', 'tipo_pessoa' => 'Tipo', 'cnpj' => 'CNPJ', 'ie' => 'IE', 'im' => 'IM', 'sexo' => 'Sexo', 'sexo_presumido' => 'Sexo presumido', 'telefone2' => 'Outro telefone',
-        'bairro' => 'Bairro', 'vendedor' => 'Vendedor', 'cliente_desde' => 'Cliente desde', 'aceita_whatsapp' => 'Aceita WhatsApp', 'aceita_email' => 'Aceita e-mail', 'ativo' => 'Ativo', 'perfil' => 'Perfil', 'status' => 'Situação'];
+        'bairro' => 'Bairro', 'vendedor' => 'Vendedor', 'cliente_desde' => 'Cliente desde', 'aceita_whatsapp' => 'Aceita WhatsApp', 'aceita_email' => 'Aceita e-mail', 'ativo' => 'Ativo', 'perfil' => 'Perfil', 'status' => 'Situação', 'tipo' => 'Tipo'];
     $ignorar = ['id', 'criado_em', 'criado_por', 'senha_hash', 'email_enviado_em', 'presenca_em', 'presenca_por', 'entregue_por', 'telefone_e164', 'pendencias', 'importacao_id', 'atualizado_em', 'consentimento_em', 'consentimento_origem'];
     $m = [];
     foreach ($depois as $c => $novo) {

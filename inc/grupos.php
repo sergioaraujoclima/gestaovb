@@ -32,6 +32,16 @@ function grupos_campos() {
         'aceita_email' => ['rot' => 'Aceita e-mail de marketing', 'tipo' => 'enum', 'ops' => ['=', '!='], 'opcoes' => ['1' => 'Sim', '0' => 'Não', '' => 'Não perguntado']],
         'vendedor' => ['rot' => 'Vendedor responsável', 'tipo' => 'texto', 'ops' => ['=', 'contem']],
     ];
+    // Compras registradas pelo relatório de vendas do ERP (bonificações e amostras não contam como compra).
+    if (function_exists('vendas_v9') && vendas_v9()) $c += [
+        'compras' => ['rot' => 'Quantidade de compras', 'tipo' => 'num', 'ops' => ['>=', '<=', '=']],
+        'valor_compras' => ['rot' => 'Total comprado (R$)', 'tipo' => 'num', 'ops' => ['>=', '<=']],
+        'ticket_compras' => ['rot' => 'Ticket médio das compras (R$)', 'tipo' => 'num', 'ops' => ['>=', '<=']],
+        'dias_ultima_compra' => ['rot' => 'Dias desde a última compra', 'tipo' => 'num', 'ops' => ['>=', '<=']],
+        'comprou_tipo' => ['rot' => 'Tipo de produto comprado', 'tipo' => 'lista', 'ops' => ['tem', 'nao_tem'], 'opcoes' => tipos_produto()],
+        'comprou_produto' => ['rot' => 'Produto comprado', 'tipo' => 'lista', 'ops' => ['tem', 'nao_tem'],
+            'opcoes' => db()->query('SELECT id, descricao FROM produtos ORDER BY ativo DESC, descricao')->fetchAll(PDO::FETCH_KEY_PAIR)],
+    ];
     return $c;
 }
 function recusou($v) { return $v !== null && $v !== '' && (string)$v === '0'; }
@@ -50,6 +60,7 @@ function grupos_regras_do_post($post) {
         if ($def['tipo'] === 'num') { if (!is_numeric(str_replace(',', '.', $v))) continue; $v = (string)(float)str_replace(',', '.', $v); }
         if ($def['tipo'] === 'enum' && !array_key_exists($v, $def['opcoes'])) continue;
         if ($def['tipo'] === 'etiqueta' && !(int)$v) continue;
+        if ($def['tipo'] === 'lista' && !array_key_exists($v, $def['opcoes'])) continue;
         if ($def['tipo'] === 'texto' && $v === '') continue;
         $r[] = ['campo' => $campo, 'op' => $op, 'valor' => $v];
     }
@@ -62,7 +73,7 @@ function grupos_resumo($g) {
     foreach (json_decode((string)$g['regras'], true) ?: [] as $r) {
         $d = $campos[$r['campo']] ?? null; if (!$d) continue;
         $v = $r['valor'];
-        if ($d['tipo'] === 'enum') $v = $d['opcoes'][$v] ?? $v;
+        if ($d['tipo'] === 'enum' || $d['tipo'] === 'lista') $v = $d['opcoes'][$v] ?? $v;
         if ($d['tipo'] === 'etiqueta') { $etq = $etq ?? db()->query('SELECT id, nome FROM crm_etiquetas')->fetchAll(PDO::FETCH_KEY_PAIR); $v = $etq[(int)$v] ?? '#' . $v; }
         if ($d['tipo'] === 'num') $v = rtrim(rtrim(number_format((float)$v, 2, ',', '.'), '0'), ',');
         $p[] = $d['rot'] . ' ' . ($ops[$r['op']] ?? $r['op']) . ' ' . $v;
@@ -78,6 +89,17 @@ function grupos_contexto($clienteId = null) {
     foreach ($pdo->query('SELECT cliente_id, COUNT(*) n, MAX(data_tour) ultimo, COALESCE(SUM(valor_pago), 0) total FROM tour_vendas' . ($clienteId ? ' WHERE cliente_id = ' . (int)$clienteId : '') . ' GROUP BY cliente_id') as $r) $agg[$r['cliente_id']] = $r;
     $etq = [];
     foreach ($pdo->query('SELECT cliente_id, etiqueta_id FROM crm_cliente_etiqueta' . ($clienteId ? ' WHERE cliente_id = ' . (int)$clienteId : '')) as $r) $etq[$r['cliente_id']][(int)$r['etiqueta_id']] = true;
+    // Compras do ERP: quantidade, total, última compra e o que comprou (tipos e produtos).
+    $comp = []; $compT = []; $compP = [];
+    if (function_exists('vendas_v9') && vendas_v9()) {
+        $wc = $clienteId ? ' AND cliente_id = ' . (int)$clienteId : '';
+        foreach ($pdo->query('SELECT cliente_id, COUNT(*) n, SUM(valor_total) total, MAX(data) ultima FROM vendas WHERE cliente_id IS NOT NULL AND valor_total > 0' . $wc . ' GROUP BY cliente_id') as $r) $comp[$r['cliente_id']] = $r;
+        foreach ($pdo->query('SELECT DISTINCT v.cliente_id, i.produto_id, p.tipo FROM venda_itens i JOIN vendas v ON v.id = i.venda_id LEFT JOIN produtos p ON p.id = i.produto_id
+            WHERE v.cliente_id IS NOT NULL AND i.bonificacao = 0' . ($clienteId ? ' AND v.cliente_id = ' . (int)$clienteId : '')) as $r) {
+            if ($r['tipo']) $compT[$r['cliente_id']][$r['tipo']] = true;
+            if ($r['produto_id']) $compP[$r['cliente_id']][(int)$r['produto_id']] = true;
+        }
+    }
     $hoje = new DateTime('today'); $ctx = [];
     foreach ($pdo->query('SELECT c.* FROM clientes c' . $w) as $c) {
         $a = $agg[$c['id']] ?? ['n' => 0, 'ultimo' => null, 'total' => 0];
@@ -88,6 +110,11 @@ function grupos_contexto($clienteId = null) {
         $c['_dias_cadastro'] = $desde ? (int)(new DateTime($desde))->diff($hoje)->format('%r%a') : null;
         $c['_estagio'] = $c['_tours'] === 0 ? 'contato' : ($c['_dias_ultimo'] !== null && $c['_dias_ultimo'] > 365 ? 'inativo' : ($c['_tours'] >= 2 ? 'recorrente' : 'cliente'));
         $c['_etq'] = $etq[$c['id']] ?? [];
+        $cp = $comp[$c['id']] ?? null;
+        $c['_compras'] = $cp ? (int)$cp['n'] : 0; $c['_valor_compras'] = $cp ? (float)$cp['total'] : 0.0;
+        $c['_ticket_compras'] = $cp && $cp['n'] ? (float)$cp['total'] / (int)$cp['n'] : null;
+        $c['_dias_ultima_compra'] = $cp ? (int)(new DateTime(substr($cp['ultima'], 0, 10)))->diff($hoje)->format('%r%a') : null;
+        $c['_comprou_tipo'] = $compT[$c['id']] ?? []; $c['_comprou_produto'] = $compP[$c['id']] ?? [];
         $ctx[(int)$c['id']] = $c;
     }
     return $ctx;
@@ -107,11 +134,16 @@ function grupos_valor($c, $campo) {
         case 'tem_email': return filter_var((string)$c['email'], FILTER_VALIDATE_EMAIL) ? '1' : '0';
         case 'aceita_whatsapp': case 'aceita_email': return $c[$campo] === null ? '' : (string)(int)$c[$campo];
         case 'sexo': return (string)$c['sexo'];
+        case 'compras': return $c['_compras'] ?? 0;
+        case 'valor_compras': return $c['_valor_compras'] ?? 0;
+        case 'ticket_compras': return $c['_ticket_compras'] ?? null;
+        case 'dias_ultima_compra': return $c['_dias_ultima_compra'] ?? null;
         default: return $c[$campo] ?? null;
     }
 }
 function grupos_regra_ok($r, $c) {
     if ($r['campo'] === 'etiqueta') { $tem = isset($c['_etq'][(int)$r['valor']]); return $r['op'] === 'tem' ? $tem : !$tem; }
+    if ($r['campo'] === 'comprou_tipo' || $r['campo'] === 'comprou_produto') { $tem = isset(($c['_' . $r['campo']] ?? [])[$r['valor']]); return $r['op'] === 'nao_tem' ? !$tem : $tem; }
     $v = grupos_valor($c, $r['campo']); $alvo = $r['valor'];
     if ($r['campo'] === 'mes_aniversario') {
         if ($alvo === 'atual') $alvo = (int)date('n'); elseif ($alvo === 'proximo') $alvo = (int)date('n', strtotime('first day of next month')); else $alvo = (int)$alvo;
@@ -196,7 +228,7 @@ function grupos_recalcular_todos() {
 // precisam ser revistos uma vez por dia. Os demais já se atualizam na hora em que a ficha, o tour ou a carga mudam.
 function grupos_dependem_da_data($g) {
     foreach (json_decode((string)$g['regras'], true) ?: [] as $r)
-        if (in_array($r['campo'], ['mes_aniversario', 'idade', 'dias_ultimo_tour', 'dias_cadastro', 'estagio'], true)) return true;
+        if (in_array($r['campo'], ['mes_aniversario', 'idade', 'dias_ultimo_tour', 'dias_cadastro', 'estagio', 'dias_ultima_compra'], true)) return true;
     return false;
 }
 function grupos_recalcular_se_velho() {

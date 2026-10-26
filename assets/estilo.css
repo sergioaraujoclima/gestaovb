@@ -187,3 +187,15 @@ a.barra:hover{background:#f6f0ec}
 .filtros-extra a{text-decoration:none}
 @media(max-width:760px){.painel-grade{grid-template-columns:1fr}.colunas{gap:3px}.barra{grid-template-columns:minmax(80px,40%) 1fr auto}}
 @media(max-width:760px){.menu-topo .marca strong::before{content:' '}}
+/* v8 · vendas */
+.num{text-align:right;font-variant-numeric:tabular-nums}
+table.mini{margin-top:10px}table.mini th,table.mini td{padding:5px 8px;font-size:13px}
+.var{font-size:12px;font-weight:600;margin-right:4px}.var.sobe{color:var(--ok)}.var.desce{color:#a02020}
+.tabela-vinculo td{vertical-align:top}.tabela-vinculo td.nome{white-space:normal;min-width:220px}
+.tabela-vinculo tr.atencao td{background:#fffaf0}
+.tabela-vinculo select{min-width:280px;max-width:520px}
+.busca-vinc{margin-top:6px}.busca-vinc .autocomplete{top:40px}
+td.nome{white-space:normal}
+.alerta-txt{color:#a02020}
+.filtro input[type=date]{flex:0 0 auto;min-width:0}
+.busca-vinc[hidden],.autocomplete[hidden]{display:none}
