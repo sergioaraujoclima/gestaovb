@@ -50,11 +50,17 @@ jobs:
 
     - name: 🩺 Conferindo se o sistema está no ar
       run: |
-        http=$(curl -sS -L -o pagina.html -w '%{http_code}' "$SITE_URL/index.php")
-        if [ "$http" = "200" ] && grep -q 'Gestão interna' pagina.html; then
-          echo "::notice::Sistema no ar: $SITE_URL"
-        else
-          echo "::error::A tela de login não respondeu como esperado (HTTP $http)."
-          head -c 500 pagina.html
-          exit 1
+        # A hospedagem às vezes responde 429 (muitas requisições) logo depois do envio por FTP: tenta algumas vezes.
+        for tentativa in 1 2 3 4 5; do
+          http=$(curl -sS -L -A "Mozilla/5.0 (deploy-check)" -o pagina.html -w '%{http_code}' "$SITE_URL/index.php" || echo 000)
+          if [ "$http" = "200" ] && grep -q 'Gestão interna' pagina.html; then
+            echo "::notice::Sistema no ar: $SITE_URL"; exit 0
+          fi
+          echo "Tentativa $tentativa: HTTP $http"; sleep 20
+        done
+        if [ "$http" = "429" ]; then
+          echo "::warning::A hospedagem limitou as requisições (HTTP 429); os arquivos foram enviados. Confira o sistema no navegador."; exit 0
         fi
+        echo "::error::A tela de login não respondeu como esperado (HTTP $http)."
+        head -c 500 pagina.html
+        exit 1
