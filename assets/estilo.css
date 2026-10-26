@@ -199,3 +199,58 @@ td.nome{white-space:normal}
 .alerta-txt{color:#a02020}
 .filtro input[type=date]{flex:0 0 auto;min-width:0}
 .busca-vinc[hidden],.autocomplete[hidden]{display:none}
+/* v8.1 · gráficos do painel de vendas */
+.destaques{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}
+.destaque{display:block;background:#fff;border:1px solid var(--borda);border-top:3px solid #d98a1c;border-radius:8px;padding:12px 14px;text-decoration:none;color:var(--txt)}
+.destaque:hover{border-color:var(--vinho2)}
+.destaque span{display:block;font-size:12px;color:#766;text-transform:uppercase;letter-spacing:.5px}
+.destaque strong{display:block;font-size:17px;line-height:1.25;margin:3px 0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.destaque small{display:block;color:#766;font-size:12px}
+svg.graf{width:100%;height:auto;display:block;font-family:inherit;overflow:visible}
+svg.graf .grade{stroke:#ece5de;stroke-width:1}
+svg.graf .base{stroke:#cfc6bc;stroke-width:1}
+svg.graf .eixo{font-size:12px;fill:#877;font-variant-numeric:tabular-nums}
+svg.graf .area{fill:rgba(122,36,57,.10)}
+svg.graf .linha{fill:none;stroke:var(--vinho2);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+svg.graf .media{stroke:#877;stroke-width:1.5;stroke-dasharray:5 4}
+svg.graf .rot-media{font-size:12px;fill:#655}
+svg.graf .rot-pico{font-size:13px;font-weight:600;fill:var(--txt)}
+svg.graf .pt circle{fill:var(--vinho2);stroke:#fff;stroke-width:2;opacity:0}
+svg.graf .pt.pico circle{fill:#d98a1c;opacity:1}
+svg.graf .pt .guia{stroke:#b9aea4;stroke-width:1;opacity:0}
+svg.graf .toque{fill:transparent}
+svg.graf .pt:hover circle,svg.graf .pt:hover .guia{opacity:1}
+svg.graf .col path{fill:var(--vinho2)}
+svg.graf .col.pico path{fill:#d98a1c}
+svg.graf .col:hover path{fill:var(--vinho)}
+.sub-graf{font-size:13px!important;color:#766;margin:10px 0 2px!important;font-weight:600}
+.ranking{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.ranking li{display:flex;gap:10px;align-items:flex-start}
+.ranking .pos{flex:0 0 22px;height:22px;border-radius:50%;background:#f1ebe6;color:var(--vinho);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.ranking li:first-child .pos{background:var(--vinho);color:#fff}
+.ranking .corpo{flex:1;min-width:0}
+.linha-rk{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.nome-rk{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nome-rk a{color:var(--txt);text-decoration:none}.nome-rk a:hover{color:var(--vinho2);text-decoration:underline}
+.val-rk{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.trilho-rk{display:block;height:8px;background:#f1ebe6;border-radius:0 4px 4px 0;margin:4px 0 2px}
+.trilho-rk span{display:block;height:100%;background:var(--vinho2);border-radius:0 4px 4px 0}
+.ranking li:first-child .trilho-rk span{background:var(--vinho)}
+.det-rk{display:block;font-size:12px;color:#766}
+.compo{display:flex;gap:2px;height:30px;border-radius:6px;overflow:hidden;margin:4px 0 10px}
+.compo .seg{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;min-width:2px}
+.c-pj{background:#a3304d}.c-pf{background:#2f7fc4}.c-sem{background:#d98a1c}
+.compo .c-sem{color:#2a2326}
+.legenda{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.legenda a{color:var(--txt);text-decoration:none}.legenda a:hover strong{color:var(--vinho2)}
+.legenda i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px;vertical-align:-1px}
+.legenda small{color:#877}
+table.calor{border-collapse:separate;border-spacing:2px;width:auto}
+table.calor th{background:none;padding:2px 4px;font-size:11px;text-align:center}
+table.calor tbody th{text-align:right;padding-right:6px}
+table.calor td{width:34px;min-width:30px;height:28px;padding:0;text-align:center;font-size:12px;border:0;border-radius:4px;background:#f6f2ee}
+table.calor td.num{background:none;padding-left:8px;text-align:right}
+@media(max-width:760px){.destaques{grid-template-columns:1fr 1fr}svg.graf .eixo{font-size:16px}}
+table.calor td{width:26px;min-width:22px;height:26px;font-size:11px}
+table.calor th{padding:2px 1px;font-size:10px}
+table.calor td.num{padding-left:6px}

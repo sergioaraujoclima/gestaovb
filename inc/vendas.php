@@ -574,3 +574,135 @@ function variacao($atual, $anterior) {
     $d = ($atual - $anterior) * 100 / $anterior;
     return '<span class="var ' . ($d >= 0 ? 'sobe' : 'desce') . '">' . ($d >= 0 ? '▲ ' : '▼ ') . number_format(abs($d), 0, ',', '.') . '%</span>';
 }
+
+// ---------- Gráficos do painel de vendas (SVG e HTML, sem bibliotecas externas) ----------
+function moeda_curta($v) {
+    $v = (float)$v;
+    if (abs($v) >= 1000000) return 'R$ ' . number_format($v / 1000000, 1, ',', '.') . ' mi';
+    if (abs($v) >= 1000) return 'R$ ' . number_format($v / 1000, abs($v) >= 10000 ? 0 : 1, ',', '.') . ' mil';
+    return 'R$ ' . number_format($v, 0, ',', '.');
+}
+// Escala "redonda" para o eixo: devolve [máximo, passo].
+function escala_eixo($max, $linhas = 4) {
+    if ($max <= 0) return [1, 0.25];
+    $bruto = $max / $linhas; $mag = pow(10, floor(log10($bruto)));
+    foreach ([1, 2, 2.5, 5, 10] as $m) if ($m * $mag >= $bruto) { $passo = $m * $mag; break; }
+    return [$passo * ceil($max / $passo), $passo];
+}
+// Linha do faturamento por dia, com área, média tracejada e o pico destacado.
+// $serie: ['aaaa-mm-dd' => ['v' => valor, 'n' => vendas]]. Passe o mouse sobre um dia para ver os números.
+function grafico_linha_dias($serie, $hrefDia = null) {
+    $W = 960; $H = 260; $l = 64; $r = 16; $t = 24; $b = 30;
+    $k = array_keys($serie); $n = count($k);
+    if (!$n) return '<p class="sub">Sem vendas neste período.</p>';
+    $vals = array_map(fn($x) => (float)$x['v'], array_values($serie));
+    [$max, $passo] = escala_eixo(max($vals));
+    $media = array_sum($vals) / $n;
+    $pico = array_keys($vals, max($vals))[0];
+    $x = fn($i) => $l + ($n === 1 ? ($W - $l - $r) / 2 : $i * ($W - $l - $r) / ($n - 1));
+    $y = fn($v) => $t + ($H - $t - $b) * (1 - $v / $max);
+    $s = '<svg class="graf" viewBox="0 0 ' . $W . ' ' . $H . '" role="img" aria-label="Faturamento por dia">';
+    for ($g = 0; $g <= $max + 0.001; $g += $passo) {
+        $s .= '<line class="grade" x1="' . $l . '" x2="' . ($W - $r) . '" y1="' . round($y($g), 1) . '" y2="' . round($y($g), 1) . '"/>'
+            . '<text class="eixo" x="' . ($l - 8) . '" y="' . round($y($g) + 4, 1) . '" text-anchor="end">' . e(moeda_curta($g)) . '</text>';
+    }
+    $passoX = max(1, (int)ceil($n / 16));
+    foreach ($k as $i => $d) if ($i % $passoX === 0 || $i === $n - 1)
+        $s .= '<text class="eixo" x="' . round($x($i), 1) . '" y="' . ($H - 10) . '" text-anchor="middle">' . e(strlen($d) === 10 ? substr($d, 8, 2) : substr(rotulo_mes($d), 0, 3)) . '</text>';
+    $pts = []; foreach ($vals as $i => $v) $pts[] = round($x($i), 1) . ',' . round($y($v), 1);
+    $s .= '<polygon class="area" points="' . round($x(0), 1) . ',' . $y(0) . ' ' . implode(' ', $pts) . ' ' . round($x($n - 1), 1) . ',' . $y(0) . '"/>';
+    $s .= '<polyline class="linha" points="' . implode(' ', $pts) . '"/>';
+    $ym = round($y($media), 1);
+    $s .= '<line class="media" x1="' . $l . '" x2="' . ($W - $r) . '" y1="' . $ym . '" y2="' . $ym . '"/>'
+        . '<text class="rot-media" x="' . ($W - $r) . '" y="' . ($ym - 6) . '" text-anchor="end">média ' . e(moeda_curta($media)) . '/dia</text>';
+    // Pontos com área de toque maior que a marca; o rótulo do pico fica sempre visível.
+    $larg = ($W - $l - $r) / max(1, $n - 1);
+    foreach ($k as $i => $d) {
+        $cx = round($x($i), 1); $cy = round($y($vals[$i]), 1);
+        $tit = (strlen($d) === 10 ? data_br($d) . ' (' . dia_semana($d) . ')' : rotulo_mes($d)) . ': ' . brl($vals[$i]) . ' em ' . (int)$serie[$d]['n'] . ' venda(s)';
+        $abre = $hrefDia ? '<a href="' . e($hrefDia($d)) . '">' : ''; $fecha = $hrefDia ? '</a>' : '';
+        $s .= $abre . '<g class="pt' . ($i === $pico ? ' pico' : '') . '"><title>' . e($tit) . '</title>'
+            . '<rect class="toque" x="' . round($cx - $larg / 2, 1) . '" y="' . $t . '" width="' . round($larg, 1) . '" height="' . ($H - $t - $b) . '"/>'
+            . '<line class="guia" x1="' . $cx . '" x2="' . $cx . '" y1="' . $t . '" y2="' . $y(0) . '"/>'
+            . '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . ($i === $pico ? 5 : 3.5) . '"/></g>' . $fecha;
+    }
+    $px = round($x($pico), 1); $py = round($y($vals[$pico]), 1);
+    $anc = $px > $W - 160 ? 'end' : ($px < $l + 100 ? 'start' : 'middle');
+    $s .= '<text class="rot-pico" x="' . $px . '" y="' . max(14, $py - 10) . '" text-anchor="' . $anc . '">Pico: ' . e(moeda_curta($vals[$pico])) . '</text>';
+    return $s . '</svg>';
+}
+// Colunas finas alinhadas à linha acima (mesmas margens): quantidade de vendas por dia.
+function grafico_colunas_dias($serie) {
+    $W = 960; $H = 110; $l = 64; $r = 16; $t = 14; $b = 8;
+    $k = array_keys($serie); $n = count($k);
+    if (!$n) return '';
+    $vals = array_map(fn($x) => (int)$x['n'], array_values($serie));
+    $max = max(1, max($vals)); $pico = array_keys($vals, max($vals))[0];
+    $larg = ($W - $l - $r) / max(1, $n - 1); $bw = max(3, min(22, $larg - 4));
+    $s = '<svg class="graf" viewBox="0 0 ' . $W . ' ' . $H . '" role="img" aria-label="Quantidade de vendas por dia">';
+    $s .= '<line class="base" x1="' . $l . '" x2="' . ($W - $r) . '" y1="' . ($H - $b) . '" y2="' . ($H - $b) . '"/>';
+    $s .= '<line class="grade" x1="' . $l . '" x2="' . ($W - $r) . '" y1="' . $t . '" y2="' . $t . '"/><text class="eixo" x="' . ($l - 20) . '" y="' . ($t + 4) . '" text-anchor="end">' . $max . ' vendas</text>';
+    foreach ($vals as $i => $v) {
+        $cx = $l + ($n === 1 ? ($W - $l - $r) / 2 : $i * ($W - $l - $r) / ($n - 1));
+        $h = $v ? max(2, ($H - $t - $b) * $v / $max) : 0;
+        $d = $k[$i];
+        $s .= '<g class="col' . ($i === $pico ? ' pico' : '') . '"><title>' . e((strlen($d) === 10 ? data_br($d) : rotulo_mes($d)) . ': ' . $v . ' venda(s)') . '</title>'
+            . '<rect class="toque" x="' . round($cx - $larg / 2, 1) . '" y="0" width="' . round($larg, 1) . '" height="' . $H . '"/>'
+            . ($h ? '<path d="' . caminho_coluna($cx - $bw / 2, $H - $b - $h, $bw, $h) . '"/>' : '') . '</g>';
+    }
+    return $s . '</svg>';
+}
+// Coluna com as pontas de cima arredondadas (4px) e base reta no eixo.
+function caminho_coluna($x, $y, $w, $h) {
+    $r = min(4, $w / 2, $h);
+    $x = round($x, 1); $y = round($y, 1); $w = round($w, 1); $h = round($h, 1);
+    return "M$x," . ($y + $h) . " V" . ($y + $r) . " Q$x,$y " . ($x + $r) . ",$y H" . ($x + $w - $r) . " Q" . ($x + $w) . ",$y " . ($x + $w) . "," . ($y + $r) . " V" . ($y + $h) . " Z";
+}
+// Ranking com barras: [rótulo, valor, link, detalhe abaixo do nome, valor exibido (opcional)].
+function ranking($itens, $moeda = true, $limite = 10) {
+    $itens = array_slice($itens, 0, $limite);
+    if (!$itens) return '<p class="sub">Sem dados neste período.</p>';
+    $max = max(array_map(fn($i) => (float)$i[1], $itens)) ?: 1;
+    $h = '<ol class="ranking">';
+    foreach ($itens as $pos => $i) {
+        [$rot, $v, $href, $det, $exib] = $i + [2 => null, 3 => '', 4 => null];
+        $nome = $href ? '<a href="' . e($href) . '">' . e($rot) . '</a>' : e($rot);
+        $h .= '<li><span class="pos">' . ($pos + 1) . '</span><div class="corpo"><div class="linha-rk"><span class="nome-rk">' . $nome . '</span><span class="val-rk">'
+            . e($exib ?? ($moeda ? brl($v) : number_format((float)$v, 0, ',', '.'))) . '</span></div>'
+            . '<span class="trilho-rk"><span style="width:' . max($v > 0 ? 1.5 : 0, $v * 100 / $max) . '%"></span></span>'
+            . ($det !== '' ? '<span class="det-rk">' . e($det) . '</span>' : '') . '</div></li>';
+    }
+    return $h . '</ol>';
+}
+// Barra única 100% dividida (composição), com legenda e rótulos diretos. $partes: [[rótulo, valor, classe de cor, link]].
+function barra_composicao($partes, $moeda = true) {
+    $tot = array_sum(array_map(fn($p) => (float)$p[1], $partes));
+    if ($tot <= 0) return '<p class="sub">Sem dados neste período.</p>';
+    $h = '<div class="compo" role="img" aria-label="' . e(implode(', ', array_map(fn($p) => $p[0] . ' ' . round($p[1] * 100 / $tot) . '%', $partes))) . '">';
+    foreach ($partes as $p) if ($p[1] > 0) $h .= '<span class="seg ' . $p[2] . '" style="flex:' . round($p[1] * 1000 / $tot) . '" title="' . e($p[0] . ': ' . ($moeda ? brl($p[1]) : $p[1]) . ' (' . round($p[1] * 100 / $tot) . '%)') . '">' . (round($p[1] * 100 / $tot) >= 8 ? round($p[1] * 100 / $tot) . '%' : '') . '</span>';
+    $h .= '</div><ul class="legenda">';
+    foreach ($partes as $p) {
+        $t = '<i class="' . $p[2] . '"></i>' . e($p[0]) . ' <strong>' . e($moeda ? brl($p[1]) : $p[1]) . '</strong> <small>' . round($p[1] * 100 / $tot) . '%</small>';
+        $h .= '<li>' . (!empty($p[3]) ? '<a href="' . e($p[3]) . '">' . $t . '</a>' : $t) . '</li>';
+    }
+    return $h . '</ul>';
+}
+// Mapa de calor dia da semana × hora (quantidade de vendas), uma cor só: mais escuro = mais vendas.
+function mapa_calor($calor, $horas) {
+    if (!$horas) return '<p class="sub">Sem vendas neste período.</p>';
+    $max = 1; foreach ($calor as $hs) foreach ($hs as $x) $max = max($max, $x['n']);
+    $nomes = [1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb', 0 => 'Dom'];
+    $h = '<div class="rolagem"><table class="calor"><thead><tr><th></th>';
+    foreach ($horas as $hr) $h .= '<th>' . sprintf('%02d', $hr) . 'h</th>';
+    $h .= '<th class="num">Total</th></tr></thead><tbody>';
+    foreach ($nomes as $d => $nm) {
+        $h .= '<tr><th>' . $nm . '</th>'; $td = 0; $tv = 0;
+        foreach ($horas as $hr) {
+            $x = $calor[$d][$hr] ?? ['n' => 0, 'v' => 0]; $td += $x['n']; $tv += $x['v'];
+            $a = $x['n'] ? 0.12 + 0.88 * $x['n'] / $max : 0;
+            $h .= '<td title="' . e($nm . ' ' . sprintf('%02d', $hr) . 'h: ' . $x['n'] . ' venda(s), ' . brl($x['v'])) . '"' . ($x['n'] ? ' style="background:rgba(122,36,57,' . round($a, 2) . ');color:' . ($a > 0.55 ? '#fff' : 'var(--txt)') . '"' : '') . '>' . ($x['n'] ?: '') . '</td>';
+        }
+        $h .= '<td class="num" title="' . e(brl($tv)) . '"><strong>' . $td . '</strong></td></tr>';
+    }
+    return $h . '</tbody></table></div><p class="nota">Cada quadrado mostra quantas vendas houve naquele dia da semana e horário; quanto mais escuro, mais vendas. Passe o mouse para ver o valor.</p>';
+}
