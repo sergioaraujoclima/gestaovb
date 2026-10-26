@@ -1,0 +1,8 @@
+# Gestão Vinícola Brasília
+# Isola esta pasta das regras do WordPress do site principal (public_html/.htaccess):
+# com o RewriteEngine ligado aqui, as regras de reescrita da pasta de cima não valem dentro de /gestao,
+# então endereços do sistema nunca caem no WordPress nem no firewall de plugins dele.
+DirectoryIndex index.php
+<IfModule mod_rewrite.c>
+RewriteEngine On
+</IfModule>
