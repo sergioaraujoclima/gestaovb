@@ -1,0 +1,8 @@
+# Dados do banco e do e-mail: ficam só no servidor (public_html/gestao/inc/config.php); nunca versionar
+inc/config.php
+
+# Arquivos enviados pelos usuários: ficam só no servidor
+uploads/comprovantes/*
+uploads/importacoes/*
+
+.DS_Store
