@@ -98,10 +98,19 @@ function ia_cartao($c) {
     $c += ['origem' => 'regra', 'prioridade' => 'media', 'texto' => null, 'dados' => [], 'link' => null, 'quando' => null];
     $s = $pdo->prepare('SELECT id, status, dados FROM ia_cartoes WHERE chave = ?'); $s->execute([$c['chave']]); $at = $s->fetch();
     if ($at) {
-        if (!in_array($at['status'], ['nova', 'andamento'], true)) return (int)$at['id'];
         $velhos = json_decode((string)$at['dados'], true) ?: [];
-        if (!empty($velhos['enviados'])) $c['dados']['enviados'] = $velhos['enviados'];
-        $pdo->prepare('UPDATE ia_cartoes SET area = ?, tipo = ?, prioridade = ?, titulo = ?, texto = ?, dados = ?, link = ?, quando = ?, valido_ate = ?, atualizado_em = ? WHERE id = ?')
+        // As marcações de "enviado" seguem o cliente (não a posição na lista), porque a lista pode mudar ao longo do dia.
+        $porCliente = [];
+        foreach ($velhos['enviados'] ?? [] as $i => $env) if (isset($velhos['contatos'][$i]['cliente_id'])) $porCliente[(int)$velhos['contatos'][$i]['cliente_id']] = $env;
+        $antigos = array_map(fn($x) => (int)($x['cliente_id'] ?? 0), $velhos['contatos'] ?? []);
+        $novosIds = array_diff(array_map(fn($x) => (int)($x['cliente_id'] ?? 0), $c['dados']['contatos'] ?? []), $antigos);
+        $resolvido = !in_array($at['status'], ['nova', 'andamento'], true);
+        // Cartão já resolvido só volta se aparecer gente nova na lista (ex.: aniversário cadastrado depois); senão fica como está.
+        if ($resolvido && !$novosIds) return (int)$at['id'];
+        $env = [];
+        foreach ($c['dados']['contatos'] ?? [] as $i => $x) if (isset($porCliente[(int)($x['cliente_id'] ?? 0)])) $env[$i] = $porCliente[(int)$x['cliente_id']];
+        if ($env) $c['dados']['enviados'] = $env;
+        $pdo->prepare('UPDATE ia_cartoes SET area = ?, tipo = ?, prioridade = ?, titulo = ?, texto = ?, dados = ?, link = ?, quando = ?, valido_ate = ?, atualizado_em = ?' . ($resolvido ? ", status = 'nova', resolvido_por = NULL, resolvido_em = NULL" : '') . ' WHERE id = ?')
             ->execute([$c['area'], $c['tipo'], $c['prioridade'], mb_substr($c['titulo'], 0, 200), $c['texto'], json_encode($c['dados'], JSON_UNESCAPED_UNICODE), $c['link'], $c['quando'], $c['valido_ate'], $agora, $at['id']]);
         return (int)$at['id'];
     }
@@ -113,6 +122,13 @@ function ia_cartao($c) {
 // Some com o cartão de regra que deixou de valer (ex.: as entregas atrasadas foram resolvidas) enquanto ninguém mexeu nele.
 function ia_cartao_retirar($chave) {
     db()->prepare("DELETE FROM ia_cartoes WHERE chave = ? AND origem = 'regra' AND status = 'nova'")->execute([$chave]);
+}
+// Algo mudou (ficha, tour, entrega, venda): os alertas são refeitos na próxima vez que alguém abrir a tela, sem esperar 1 hora.
+function ia_marcar_desatualizado() {
+    static $feito = false;
+    if ($feito || !ia_v10()) return;
+    $feito = true;
+    try { db()->prepare("UPDATE configuracoes SET valor = '' WHERE chave = 'ia_ultima_regra'")->execute(); } catch (Throwable $ex) {}
 }
 function ia_semana($d = null) { return date('o-\SW', $d ? strtotime($d) : time()); }
 function ia_q($sql, $p = []) { $s = db()->prepare($sql); $s->execute($p); return $s->fetchAll(); }
