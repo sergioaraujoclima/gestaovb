@@ -25,6 +25,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         registrar_log('ia', 0, 'Configuração da IA', 'modelo ' . config('ia_modelo') . ($k !== '' ? '; chave da API atualizada' : '') . (!empty($_POST['remover_chave']) ? '; chave removida' : '') . '; e-mails ' . (config('ia_emails') === '1' ? 'ligados' : 'desligados'));
         flash('Configuração da IA salva.'); ir('ia_config.php');
     }
+    if ($acao === 'teste_email') {
+        $para = trim((string)($_POST['para'] ?? ''));
+        if (!filter_var($para, FILTER_VALIDATE_EMAIL)) { flash('Informe um e-mail válido para o teste.', 'erro'); ir('ia_config.php#diag-email'); }
+        $html = '<p>Teste de envio do Gestão Vinícola Brasília em ' . date('d/m/Y H:i') . '.</p><p>Se este e-mail chegou, o servidor está entregando. Veja se caiu na caixa de entrada ou no spam.</p>';
+        try { $ok = email_enviar_campanha(['remetente' => null], $para, 'Teste de envio · Gestão Vinícola Brasília', $html, strip_tags($html)); }
+        catch (Throwable $ex) { flash('Teste não enviado: ' . $ex->getMessage(), 'erro'); ir('ia_config.php#diag-email'); }
+        registrar_log('ia', 0, 'Teste de e-mail', $para . ': ' . ($ok ? 'aceito pelo servidor' : 'recusado pelo servidor'));
+        flash($ok ? 'O servidor aceitou o e-mail para ' . $para . '. Se não chegar em alguns minutos (nem no spam), o problema está depois do servidor: veja o diagnóstico abaixo e o "Rastrear entrega" do cPanel.' : 'O servidor recusou o envio para ' . $para . '.', $ok ? 'ok' : 'erro');
+        ir('ia_config.php#diag-email');
+    }
     if ($acao === 'testar') {
         try { $r = ia_chamar_claude('Responda em uma frase curta.', 'Diga "Conexão com a IA funcionando" e mais nada.', 50); flash('Conexão ok. Resposta da IA: ' . trim($r['texto'])); }
         catch (Throwable $ex) { flash('Falha no teste: ' . $ex->getMessage(), 'erro'); }
@@ -92,6 +102,32 @@ require __DIR__ . '/inc/topo.php';
     <?= $dest ? e(implode('; ', array_map(fn($u) => $u['nome'] . ' (' . implode(', ', array_map(fn($a) => ia_areas()[$a], $u['areas'])) . ')', $dest))) : '<strong>nenhum ainda</strong> — dê os perfis de gerente em <a href="usuarios.php">Controle de acesso</a>' ?>.</p>
 </div>
 
+<?php $dg = function_exists('email_diagnostico') ? email_diagnostico() : null; ?>
+<?php if ($dg): $okI = '<span class="tag ok">ok</span>'; $nokI = '<span class="tag pend">falta</span>'; ?>
+<div class="cartao" id="diag-email">
+  <h2 style="margin-top:0">Diagnóstico do e-mail</h2>
+  <p class="sub">Consulta feita agora, pelo próprio servidor, no DNS de <strong><?= e($dg['dominio']) ?></strong>. É o que Gmail, Outlook e outros conferem antes de aceitar um e-mail.</p>
+  <table class="diag"><tbody>
+    <tr><td>Remetente</td><td><?= e($dg['remetente']) ?> <?= $dg['ativo'] ? '' : ' · <strong>envio desligado (MAIL_ATIVO)</strong>' ?><?= $dg['gratis'] ? '<br><strong class="erro-txt">Remetente de e-mail gratuito: Gmail, Outlook e Yahoo descartam e-mails "de" ' . e($dg['dominio']) . ' enviados por outro servidor. Use um endereço @vinicolabrasilia.com.br (peça para trocar o MAIL_DE no config.php).</strong>' : '' ?></td></tr>
+    <tr><td>Quem recebe os e-mails do domínio (MX)</td><td><?= $dg['mx'] ? e(implode(', ', $dg['mx'])) . ' · <strong>' . e($dg['provedor']) . '</strong>' : '<strong>nenhum MX encontrado</strong>' ?>
+      <?= $dg['externo'] ? '<br><span class="erro-txt">As caixas de e-mail do domínio ficam fora da HostGator. E-mails do sistema para endereços @' . e($dg['dominio']) . ' podem ficar presos no servidor: no cPanel, em <strong>Roteamento de e-mail</strong> (Email Routing), escolha <strong>Trocador de e-mails remoto</strong> (Remote Mail Exchanger). Para testar sem esse ajuste, use um Gmail pessoal.</span>' : '' ?></td></tr>
+    <tr><td>SPF (servidores autorizados a enviar)</td><td><?= $dg['spf'] ? $okI . ' <code>' . e($dg['spf']) . '</code>' . ($dg['spf_varios'] ? '<br><span class="erro-txt">Há mais de um registro SPF: os provedores tratam como inválido. Deixe um só, juntando os dois.</span>' : '') : $nokI . ' sem registro SPF' ?></td></tr>
+    <tr><td>DKIM (assinatura do domínio)</td><td><?= $dg['dkim'] ? $okI . ' default._domainkey publicado' : $nokI . ' sem DKIM em default._domainkey' ?></td></tr>
+    <tr><td>DMARC</td><td><?= $dg['dmarc'] ? $okI . ' <code>' . e($dg['dmarc']) . '</code>' : '<span class="tag neutra">opcional</span> sem DMARC (recomendado: <code>v=DMARC1; p=none</code>)' ?></td></tr>
+    <tr><td>IP deste servidor</td><td><?= e($dg['ip']) ?></td></tr>
+  </tbody></table>
+  <?php if (!$dg['spf'] || !$dg['dkim']): ?><p class="aviso erro">Sem SPF e DKIM, Gmail e Outlook costumam descartar o e-mail (às vezes nem chega ao spam). <?= $dg['externo'] ? 'Como o DNS do domínio aponta os e-mails para ' . e($dg['provedor']) . ', o SPF precisa autorizar os dois: o provedor e a HostGator.' : '' ?></p><?php endif; ?>
+  <details class="dicas"><summary>Onde ajustar no cPanel da HostGator</summary><ul>
+    <li>No cPanel, use a <strong>caixa de busca do topo</strong> e digite <strong>entrega</strong> ou <strong>deliverability</strong>: aparece <strong>Capacidade de entrega do e-mail</strong> (nas versões antigas, <strong>Autenticação</strong>). Lá há o botão <strong>Reparar</strong>/<strong>Gerenciar</strong>, que instala SPF e DKIM sozinho quando o DNS do domínio fica na HostGator.</li>
+    <li>Se o DNS do domínio fica em outro lugar (Registro.br, Cloudflare, GoDaddy…), a mesma tela mostra os registros sugeridos: copie o <strong>SPF</strong> e o <strong>DKIM</strong> e cadastre no DNS de onde o domínio está.</li>
+    <li>Para ver o que aconteceu com um envio, busque <strong>Rastrear entrega</strong> (Track Delivery) no cPanel e procure o endereço do destinatário: mostra se saiu, se foi recusado e o motivo.</li>
+  </ul></details>
+  <form method="post" class="acoes" style="flex-wrap:wrap;margin-top:10px"><?= csrf_campo() ?><input type="hidden" name="acao" value="teste_email">
+    <input type="email" name="para" required placeholder="e-mail para o teste" value="<?= e($GLOBALS['USUARIO']['email'] ?? '') ?>" style="min-width:260px">
+    <button class="peq">Enviar e-mail de teste</button><span class="sub">Teste também com um Gmail pessoal: ajuda a separar problema do servidor de problema da caixa de destino.</span>
+  </form>
+</div>
+<?php endif; ?>
 <div class="cartao" id="mensagens">
   <h2 style="margin-top:0">Mensagens prontas do WhatsApp</h2>
   <p class="sub">Use {nome}, {horario}, {data}, {endereco} e {link_avaliacao}; o sistema troca pelos dados de cada cliente. Para empresas, {nome} é o nome da empresa. Deixe como está para usar o texto padrão.</p>

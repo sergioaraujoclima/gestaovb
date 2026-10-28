@@ -169,6 +169,22 @@ function email_lote($c, $max = 25, $quem = null) {
     return [$ok, $fal, $rest, $rest ? ($fal && !$ok ? 'falha' : ($ok + $fal >= $cabe && $cabe < $max ? 'limite' : 'ok')) : 'fim'];
 }
 
+// ---------- Diagnóstico (Configuração › E-mail) ----------
+// Consulta o DNS do domínio do remetente a partir do próprio servidor: MX (quem recebe), SPF, DKIM e DMARC (o que os provedores conferem).
+function email_diagnostico() {
+    $de = (string)MAIL_DE; $dom = strtolower(substr((string)strrchr($de, '@'), 1));
+    $txt = function ($nome) { $r = @dns_get_record($nome, DNS_TXT) ?: []; return array_map(fn($x) => $x['txt'] ?? implode('', $x['entries'] ?? []), $r); };
+    $mx = array_map(fn($x) => strtolower($x['target']), @dns_get_record($dom, DNS_MX) ?: []);
+    $spf = array_values(array_filter($txt($dom), fn($t) => stripos($t, 'v=spf1') === 0));
+    $dkim = array_values(array_filter($txt('default._domainkey.' . $dom), fn($t) => stripos($t, 'p=') !== false));
+    $dmarc = array_values(array_filter($txt('_dmarc.' . $dom), fn($t) => stripos($t, 'v=DMARC1') === 0));
+    $mxTxt = implode(' ', $mx);
+    $prov = preg_match('/google|googlemail/', $mxTxt) ? 'Google (Gmail/Workspace)' : (preg_match('/outlook|microsoft/', $mxTxt) ? 'Microsoft 365 (Outlook)' : (preg_match('/zoho/', $mxTxt) ? 'Zoho' : ($mx ? 'a própria hospedagem' : '')));
+    $gratis = (bool)preg_match('/^(gmail|hotmail|outlook|live|yahoo|icloud|bol|uol|terra)\./', $dom);
+    return ['remetente' => $de, 'dominio' => $dom, 'ativo' => (bool)MAIL_ATIVO, 'gratis' => $gratis, 'mx' => $mx, 'provedor' => $prov, 'externo' => $prov !== '' && $prov !== 'a própria hospedagem',
+        'spf' => $spf[0] ?? null, 'spf_varios' => count($spf) > 1, 'dkim' => (bool)$dkim, 'dmarc' => $dmarc[0] ?? null, 'ip' => $_SERVER['SERVER_ADDR'] ?? @gethostbyname(gethostname())];
+}
+
 // ---------- Envio avulso (botão "E-mail" ao lado do WhatsApp) ----------
 // Situação de cada cliente diante de uma campanha de e-mail: enviado, falhou, pode (tem e-mail e não recusou), recusou ou sem_email.
 function email_situacoes($campId, array $ids) {
