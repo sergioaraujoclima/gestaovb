@@ -8,12 +8,12 @@ function camp_publico_email($c) {
         FROM crm_grupo_membros m JOIN clientes cl ON cl.id = m.cliente_id LEFT JOIN crm_campanha_envios e ON e.campanha_id = ? AND e.cliente_id = cl.id
         WHERE m.grupo_id = ? AND m.origem <> 'excluido' ORDER BY cl.nome");
     $s->execute([$c['id'], $c['grupo_id']]);
-    $r = ['fila' => [], 'feitos' => [], 'sem_celular' => 0, 'sem_email' => 0, 'recusaram' => 0, 'sem_optin' => 0];
+    $r = ['fila' => [], 'feitos' => [], 'sem_celular' => 0, 'sem_email' => 0, 'recusaram' => 0, 'sem_optin' => 0, 'fora' => []];
     foreach ($s as $x) {
         if ($x['situacao']) { $r['feitos'][] = $x; continue; }
-        if (!filter_var((string)$x['email'], FILTER_VALIDATE_EMAIL)) { $r['sem_email']++; continue; }
-        if (recusou($x['aceita_email'])) { $r['recusaram']++; continue; }
-        if ($c['so_optin'] && (string)$x['aceita_email'] !== '1') { $r['sem_optin']++; continue; }
+        if (!filter_var((string)$x['email'], FILTER_VALIDATE_EMAIL)) { $r['sem_email']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => 'sem e-mail válido']; continue; }
+        if (recusou($x['aceita_email'])) { $r['recusaram']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => 'recusou e-mail']; continue; }
+        if ($c['so_optin'] && (string)$x['aceita_email'] !== '1') { $r['sem_optin']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => 'não autorizou e-mail (a campanha é só para quem autorizou)']; continue; }
         $r['fila'][] = $x;
     }
     return $r;

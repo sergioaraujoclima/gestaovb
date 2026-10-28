@@ -52,12 +52,12 @@ function camp_publico($c) {
         FROM crm_grupo_membros m JOIN clientes cl ON cl.id = m.cliente_id LEFT JOIN crm_campanha_envios e ON e.campanha_id = ? AND e.cliente_id = cl.id
         WHERE m.grupo_id = ? AND m.origem <> 'excluido' ORDER BY cl.nome");
     $s->execute([$c['id'], $c['grupo_id']]);
-    $r = ['fila' => [], 'feitos' => [], 'sem_celular' => 0, 'recusaram' => 0, 'sem_optin' => 0];
+    $r = ['fila' => [], 'feitos' => [], 'sem_celular' => 0, 'recusaram' => 0, 'sem_optin' => 0, 'fora' => []];
     foreach ($s as $x) {
         if ($x['situacao']) { $r['feitos'][] = $x; continue; }
-        if (!e_celular($x['telefone_e164'])) { $r['sem_celular']++; continue; }
-        if (recusou($x['aceita_whatsapp'])) { $r['recusaram']++; continue; }
-        if ($c['so_optin'] && (string)$x['aceita_whatsapp'] !== '1') { $r['sem_optin']++; continue; }
+        if (!e_celular($x['telefone_e164'])) { $r['sem_celular']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => $x['telefone'] ? 'telefone não é celular válido (' . $x['telefone'] . ')' : 'sem telefone']; continue; }
+        if (recusou($x['aceita_whatsapp'])) { $r['recusaram']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => 'recusou WhatsApp']; continue; }
+        if ($c['so_optin'] && (string)$x['aceita_whatsapp'] !== '1') { $r['sem_optin']++; $r['fora'][] = ['id' => (int)$x['id'], 'nome' => $x['nome'], 'motivo' => 'não autorizou WhatsApp (a campanha é só para quem autorizou)']; continue; }
         $r['fila'][] = $x;
     }
     return $r;

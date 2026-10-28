@@ -121,6 +121,13 @@ function ia_render_cartao($c, $aba, $tiposMarketing) {
             . '<p class="acoes"><a class="btn wa" href="ia_disparo.php?c=' . (int)$cp['id'] . '">Iniciar envio ▶</a>' . (pode_ver_crm() ? '<a class="btn peq sec" href="crm_grupos.php?ver=' . (int)$cp['grupo_id'] . '&aba=whatsapp#campanha">Ver mensagem</a>' : '') . '</p>';
         $c['link'] = null;
         }
+        // Quem está na fila e quem ficou de fora (e por quê): sem isso o cartão só mostrava um número.
+        $nomes = function ($l, $fmt) { $h = ''; foreach (array_slice($l, 0, 6) as $x) $h .= '<li>' . $fmt($x) . '</li>'; return $h . (count($l) > 6 ? '<li class="sub">e mais ' . (count($l) - 6) . '</li>' : ''); };
+        $h .= '<div class="ia-fila">';
+        if ($n['fila']) $h .= '<details' . (count($n['fila']) <= 6 ? ' open' : '') . '><summary>Na fila (' . count($n['fila']) . ')</summary><ul>' . $nomes($n['fila'], fn($x) => '<a href="clientes.php?editar=' . (int)$x['id'] . '">' . e($x['nome']) . '</a>') . '</ul></details>';
+        if ($n['fora']) $h .= '<details><summary>Fora da fila (' . count($n['fora']) . ')</summary><ul>' . $nomes($n['fora'], fn($x) => '<a href="clientes.php?editar=' . (int)$x['id'] . '">' . e($x['nome']) . '</a><br><small>' . e($x['motivo']) . '</small>') . '</ul></details>';
+        if (!$n['fila'] && ($pq = camp_por_que_nao_aparece($cp))) $h .= '<p class="aviso erro">' . e($pq) . '</p>';
+        $h .= '</div>';
     }
     if ($contatos) {
         $h .= '<div class="ia-contatos"><div class="ia-prog">' . count($env) . ' de ' . count($contatos) . ' contatados</div>'

@@ -97,6 +97,7 @@ require __DIR__ . '/inc/topo.php';
     <h2>Já atendidos <small id="d-nfeitos"></small></h2>
     <ul class="disp-lista" id="d-feitos"></ul>
     <p class="nota">Fora da fila: <?= $pub['sem_celular'] ?> sem celular, <?= $pub['recusaram'] ?> recusaram WhatsApp<?= $c['so_optin'] ? ', ' . $pub['sem_optin'] . ' sem autorização' : '' ?>.</p>
+    <?php if ($pub['fora']): ?><details class="ia-fila"><summary>Ver quem ficou fora e por quê (<?= count($pub['fora']) ?>)</summary><ul><?php foreach (array_slice($pub['fora'], 0, 200) as $x): ?><li><a href="clientes.php?editar=<?= (int)$x['id'] ?>"><?= e($x['nome']) ?></a><br><small><?= e($x['motivo']) ?></small></li><?php endforeach; ?></ul></details><?php endif; ?>
   </section>
 </div>
 <script>

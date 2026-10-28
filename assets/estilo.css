@@ -363,3 +363,11 @@ button.link{background:none;border:0;color:var(--vinho2);text-decoration:underli
 [hidden]{display:none!important}
 input[type=color]{height:40px;padding:3px;cursor:pointer}
 .ia-busca{padding:5px 8px;font-size:13px;margin:2px 0 4px}
+/* v9.9 · fila da campanha no cartão */
+.ia-fila{margin:8px 0;font-size:14px}
+.ia-fila details{margin:4px 0}
+.ia-fila summary{cursor:pointer;color:var(--vinho)}
+.ia-fila ul{list-style:none;margin:4px 0 0;padding:0}
+.ia-fila li{padding:4px 0;border-bottom:1px solid #f1ebe6}
+.ia-fila li a{color:var(--txt)}
+.ia-fila small{color:#766}
