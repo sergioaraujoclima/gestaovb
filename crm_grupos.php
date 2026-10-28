@@ -45,7 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['ok' => (bool)$nomeImg, 'url' => url_base() . '/c.php?k=' . rawurlencode($camp['token']) . '&f=' . rawurlencode((string)$nomeImg)]); exit;
         }
         if ($acao === 'camp_teste_email' && $camp) {
-            $para = (string)$GLOBALS['USUARIO']['email'];
+            $para = trim((string)($_POST['teste_para'] ?? '')) ?: (string)$GLOBALS['USUARIO']['email'];
+            if (!filter_var($para, FILTER_VALIDATE_EMAIL)) { flash('Informe um e-mail válido para o teste.', 'erro'); ir($volta); }
             try {
                 [$as, $html, $txt] = email_montar($camp, ['id' => 0, 'nome' => $quem, 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília'], false);
                 $ok = email_enviar_campanha($camp, $para, '[TESTE] ' . $as, $html, $txt);
@@ -359,7 +360,7 @@ $aba = in_array($_GET['aba'] ?? '', ['whatsapp', 'email', 'membros'], true) ? $_
     <?php if ($camp): ?><span class="tag <?= $camp['status'] === 'liberada' ? 'ok' : 'neutra' ?>"><?= e(nome_status_campanha($camp['status'])) ?></span><?php endif; ?>
     <?php if ($cc): ?><span class="sub"><?= $cc['enviados'] ?> enviada(s) · <?= $cc['pendentes'] ?> na fila<?= $cc['pulados'] ? ' · ' . $cc['pulados'] . ' pulada(s)' : '' ?> · <?= $cc['sem_celular'] ?> sem celular · <?= $cc['recusaram'] ?> recusaram<?= $camp['so_optin'] ? ' · ' . $cc['sem_optin'] . ' sem autorização' : '' ?></span><?php endif; ?>
   </div>
-  <?php if ($camp && ($pq = camp_por_que_nao_aparece($camp))): ?><p class="aviso erro">Não aparece em Alertas e sugestões: <?= e($pq) ?></p><?php elseif ($camp && $camp['status'] === 'liberada'): ?><p class="aviso">Aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a> com <?= (int)$cc['pendentes'] ?> cliente(s) para enviar.</p><?php endif; ?>
+  <?php if ($camp && ($pq = camp_por_que_nao_aparece($camp))): ?><p class="aviso erro">Não aparece em Alertas e sugestões: <?= e($pq) ?></p><?php elseif ($camp && $camp['status'] === 'liberada'): ?><p class="aviso camp-ir">Aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a> com <?= (int)$cc['pendentes'] ?> cliente(s) para enviar. <a class="btn peq wa" href="ia_disparo.php?c=<?= (int)$camp['id'] ?>">Ir para o envio ▶</a></p><?php endif; ?>
   <p class="sub">Escreva aqui a mensagem do grupo. Ao <strong>liberar para envio</strong>, ela aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a>, onde quem opera o WhatsApp dispara um cliente por vez (o sistema abre a conversa com o texto pronto e passa para o próximo).</p>
   <?php if ($podeCamp): ?>
   <form method="post" enctype="multipart/form-data">

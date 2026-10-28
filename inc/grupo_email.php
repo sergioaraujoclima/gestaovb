@@ -15,7 +15,7 @@ if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = emai
   <div class="ficha-topo"><strong>E-mail da campanha</strong>
     <?php if ($campE): ?><span class="tag <?= $campE['status'] === 'liberada' ? 'ok' : 'neutra' ?>"><?= e(nome_status_campanha($campE['status'])) ?></span><?php endif; ?>
   </div>
-  <?php if ($campE && ($pq = camp_por_que_nao_aparece($campE))): ?><p class="aviso erro">Não aparece em Alertas e sugestões: <?= e($pq) ?></p><?php elseif ($campE && $campE['status'] === 'liberada'): ?><p class="aviso">Aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a> com <?= (int)$ce['pendentes'] ?> cliente(s) para enviar.</p><?php endif; ?>
+  <?php if ($campE && ($pq = camp_por_que_nao_aparece($campE))): ?><p class="aviso erro">Não aparece em Alertas e sugestões: <?= e($pq) ?></p><?php elseif ($campE && $campE['status'] === 'liberada'): ?><p class="aviso camp-ir">Aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a> com <?= (int)$ce['pendentes'] ?> cliente(s) para enviar. <a class="btn peq" href="ia_email.php?c=<?= (int)$campE['id'] ?>">Ir para o envio ▶</a></p><?php endif; ?>
   <?php if ($ce): ?>
   <div class="cards">
     <div class="card"><span>Enviados</span><strong><?= $ce['enviados'] ?></strong><small><?= $ce['pendentes'] ?> na fila</small></div>
@@ -52,7 +52,7 @@ if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = emai
       <button class="sec" name="acao" value="camp_salvar">Salvar rascunho</button>
       <button name="acao" value="camp_liberar" onclick="return confirm('Liberar este e-mail para envio?')"><?= ($campE['status'] ?? '') === 'liberada' ? 'Salvar alterações (já liberado)' : 'Salvar e liberar para envio' ?></button>
       <?php if ($campE): ?>
-        <button class="sec" name="acao" value="camp_teste_email" formnovalidate title="Envia a última versão salva para o seu e-mail">Enviar teste para mim</button>
+        <span class="camp-teste"><input type="email" name="teste_para" value="<?= e($GLOBALS['USUARIO']['email'] ?? '') ?>" placeholder="e-mail para o teste" title="Endereço que recebe o teste"><button class="sec" name="acao" value="camp_teste_email" formnovalidate title="Envia a última versão salva para o endereço ao lado (não conta como envio da campanha)">Enviar teste</button></span>
         <?php if ($ce && $ce['falhas']): ?><button class="sec" name="acao" value="camp_reenviar_falhas" formnovalidate>Tentar de novo as <?= $ce['falhas'] ?> falha(s)</button><?php endif; ?>
         <button class="perigo" name="acao" value="camp_encerrar" formnovalidate onclick="return confirm('Encerrar esta campanha de e-mail? Os envios param; o histórico fica guardado.')">Encerrar campanha</button>
       <?php endif; ?>
@@ -62,10 +62,11 @@ if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = emai
   <?php if ($previa): ?>
   <h2>Prévia do e-mail <small>versão salva · como chega para "Maria da Silva" · assunto: <?= e($asPrev) ?></small></h2>
   <iframe class="em-previa" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="<?= e($previa) ?>" title="Prévia do e-mail"></iframe>
+  <?php if ($campE['status'] === 'liberada' && $ce && $ce['pendentes']): ?><p class="acoes"><a class="btn" href="ia_email.php?c=<?= (int)$campE['id'] ?>">Ir para o envio (<?= (int)$ce['pendentes'] ?> na fila) ▶</a></p><?php elseif ($campE['status'] !== 'liberada'): ?><p class="sub">Esta é só a prévia. Para enviar aos clientes do grupo, clique em <strong>Salvar e liberar para envio</strong>; o envio é feito em Sugestões da IA › Alertas e sugestões.</p><?php endif; ?>
   <?php endif; ?>
   <details class="dicas"><summary>Para os e-mails chegarem na caixa de entrada (e não no spam)</summary>
     <ul>
-      <li>No cPanel, abra <strong>E-mail › Capacidade de entrega do e-mail</strong> (Email Deliverability) e deixe <strong>SPF e DKIM</strong> como "válido" para vinicolabrasilia.com.br. Sem isso, Gmail e Outlook mandam muita coisa para o spam.</li>
+      <li>Confira <?= eh_admin() ? '<a href="ia_config.php#diag-email">' : '' ?>Sugestões da IA › Configuração › Diagnóstico do e-mail<?= eh_admin() ? '</a>' : '' ?>: mostra se o domínio tem <strong>SPF e DKIM</strong> e onde ajustar. Sem isso, Gmail e Outlook mandam muita coisa para o spam (ou descartam).</li>
       <li>O e-mail já sai com versão em texto, o link "não quero mais receber" e o descadastro de um clique que o Gmail e o Yahoo exigem de quem envia em quantidade. Quem se descadastra fica marcado na ficha como "não aceita e-mail" e sai dos próximos envios.</li>
       <li>Assunto curto e pessoal ({nome} ajuda), texto de verdade além das imagens e um único botão principal costumam ter mais abertura e clique.</li>
       <li>A hospedagem compartilhada limita quantos e-mails saem por hora: o envio é feito em lotes dentro desse limite (ajuste em Sugestões da IA › Configuração). Para bases grandes, um serviço de e-mail marketing dedicado entrega melhor.</li>
