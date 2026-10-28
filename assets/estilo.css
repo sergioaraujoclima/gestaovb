@@ -291,3 +291,51 @@ a.btn.wa{background:#1f7a4d;color:#fff}a.btn.wa:hover{background:#17603c}
 .ia-status input{flex:1 1 100%;padding:5px 8px;font-size:13px;width:auto}
 pre.cron{background:#2a2326;color:#f6f3ef;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px}
 @media(max-width:760px){.ia-grade{grid-template-columns:1fr}}
+/* v10 · mensagens de campanha (WhatsApp) */
+.campanha{border-left:4px solid #1f7a4d}
+.wa-editor{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(260px,1fr);gap:16px;margin:12px 0}
+.wa-barra{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.wa-barra button{background:#fff;color:var(--txt);border:1px solid #cfc6bc;padding:5px 9px;font-size:13px}
+.wa-barra button:hover{background:#f3eee8}
+.wa-barra select{width:auto;padding:5px 8px;font-size:13px}
+.wa-emojis{border:1px solid var(--borda);border-radius:8px;padding:8px;margin-bottom:6px;background:#fff;max-height:240px;overflow:auto}
+.wa-emojis div{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin-bottom:4px}
+.wa-emojis span{font-size:11px;color:#766;width:100%;text-transform:uppercase;letter-spacing:.4px}
+.wa-emojis button{background:none;border:0;font-size:22px;padding:2px 4px;color:inherit;line-height:1.2}
+.wa-emojis button:hover{background:#f3eee8}
+.wa-editor textarea{font-size:15px;line-height:1.45}
+.wa-rodape{display:flex;gap:10px;justify-content:space-between;font-size:12px;color:#766;margin-top:4px}
+.wa-rodape .sub{margin:0;text-align:right}
+.wa-previa-col .rot{display:block;font-size:13px;color:#544;margin-bottom:4px}
+.wa-tela{background:#e5ddd5;border-radius:10px;padding:14px;min-height:120px}
+.wa-bolha{background:#dcf8c6;border-radius:8px;padding:6px 8px 4px;max-width:340px;margin-left:auto;box-shadow:0 1px 1px rgba(0,0,0,.12);font-size:14.5px;line-height:1.4;word-wrap:break-word;position:relative}
+.wa-bolha.mini{margin:0;max-width:none;font-size:13px}
+.wa-img{display:block;width:100%;border-radius:6px;margin-bottom:6px}
+.wa-txt code{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+.wa-cit{display:block;border-left:3px solid #6bb36b;padding-left:6px;color:#4a4a4a}
+.wa-card{background:#cfe9ba;border-radius:6px;margin-top:6px;overflow:hidden;font-size:13px}
+.wa-card img{width:100%;display:block}
+.wa-card strong,.wa-card span,.wa-card small{display:block;padding:2px 8px}
+.wa-card small{color:#667;padding-bottom:6px}
+.wa-hora{display:block;text-align:right;font-size:11px;color:#667;margin-top:2px}
+.camp-img{margin-top:6px}
+.camp-mini{display:flex;align-items:center;gap:10px}.camp-mini img{max-height:90px;border-radius:6px}
+.dicas{margin-top:12px}.dicas ul{margin:6px 0 0;padding-left:20px;font-size:14px;color:#544}.dicas li{margin-bottom:6px}
+.ia-camp{display:flex;gap:10px;align-items:flex-start}.ia-camp img{width:84px;border-radius:6px;flex:0 0 auto}.ia-camp .wa-bolha{flex:1}
+.disp-prog{height:8px;background:#f1ebe6;border-radius:4px;overflow:hidden;margin:6px 0}
+.disp-prog span{display:block;height:100%;background:#1f7a4d;border-radius:4px;transition:width .2s}
+.disp-topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.disp-grade{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,1fr);gap:14px}
+.disp-opcoes{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;font-size:14px}
+.disp-opcoes label.inline{flex-direction:row;align-items:center;gap:6px}
+.disp-opcoes input{width:auto}
+.disp-nome{font-size:18px;margin-bottom:8px}.disp-nome #d-pos{color:#766;font-size:13px;margin-right:6px}
+.disp-botoes{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 6px}
+button.wa,a.btn.wa{background:#1f7a4d;color:#fff}button.wa:hover,a.btn.wa:hover{background:#17603c}
+button.grande{font-size:16px;padding:11px 20px}
+.disp-lista{margin:0;padding-left:20px;font-size:14px}.disp-lista li{padding:3px 0}
+ul.disp-lista{list-style:none;padding:0}
+button.link{background:none;border:0;color:var(--vinho2);text-decoration:underline;padding:0 4px;font-size:12px;cursor:pointer}
+@media(max-width:760px){.wa-editor,.disp-grade{grid-template-columns:1fr}}
+.wa-tela .wa-bolha+.wa-bolha{margin-top:8px}
+.wa-editor [hidden],.wa-tela [hidden]{display:none!important}

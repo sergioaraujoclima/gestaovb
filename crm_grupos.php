@@ -26,6 +26,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ir($_POST['volta'] ?? $volta);
     }
     if (!pode_gerir_grupos()) negar();
+    // ---------- Mensagem da campanha ----------
+    if (strpos($acao, 'camp_') === 0) {
+        if (!$g || !camp_v11()) { flash('Grupo não encontrado ou migração v11 pendente.', 'erro'); ir('crm_grupos.php'); }
+        $volta = 'crm_grupos.php?ver=' . $gid . '#campanha';
+        $cid = (int)($_POST['campanha_id'] ?? 0);
+        $camp = $cid ? camp_por_id($cid) : null;
+        if ($camp && (int)$camp['grupo_id'] !== $gid) negar();
+        $agora = date('Y-m-d H:i:s'); $quem = $GLOBALS['USUARIO']['nome'];
+        if ($acao === 'camp_encerrar' && $camp) {
+            $pdo->prepare("UPDATE crm_campanhas SET status = 'encerrada', atualizado_em = ? WHERE id = ?")->execute([$agora, $cid]);
+            $pdo->prepare("UPDATE ia_cartoes SET status = 'feita', resolvido_por = ?, resolvido_em = ?, comentario = COALESCE(comentario, 'Campanha encerrada') WHERE chave LIKE ? AND status IN ('nova', 'andamento')")->execute([$quem, $agora, 'campanha:' . $cid . ':%']);
+            registrar_log('campanha', $cid, 'Campanha encerrada', $camp['titulo'] . ' · grupo ' . $g['nome']);
+            flash('Campanha encerrada. Ela sai de Alertas e sugestões.'); ir($volta);
+        }
+        if ($acao === 'camp_remover_imagem' && $camp) {
+            camp_apagar_imagem($camp['imagem']);
+            $pdo->prepare('UPDATE crm_campanhas SET imagem = NULL, atualizado_em = ? WHERE id = ?')->execute([$agora, $cid]);
+            flash('Imagem removida.'); ir($volta);
+        }
+        if ($acao === 'camp_salvar' || $acao === 'camp_liberar') {
+            $d = ['titulo' => mb_substr(texto_limpo($_POST['titulo'] ?? ''), 0, 120) ?: $g['nome'],
+                'texto' => trim(str_replace("\r", '', (string)($_POST['texto'] ?? ''))),
+                'cartao' => isset($_POST['cartao']) ? 1 : 0,
+                'cartao_titulo' => vazio_null(mb_substr(texto_limpo($_POST['cartao_titulo'] ?? ''), 0, 120)),
+                'cartao_texto' => vazio_null(mb_substr(texto_limpo($_POST['cartao_texto'] ?? ''), 0, 300)),
+                'area' => in_array($_POST['area'] ?? '', ['b2b', 'b2c', 'enoturismo'], true) ? $_POST['area'] : 'b2c',
+                'so_optin' => isset($_POST['so_optin']) ? 1 : 0,
+                'inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['inicio'] ?? '') ? $_POST['inicio'] : date('Y-m-d'),
+                'fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['fim'] ?? '') ? $_POST['fim'] : null];
+            $d['texto'] = mb_substr($d['texto'], 0, 3500);
+            if ($acao === 'camp_liberar' && $d['texto'] === '') { flash('Escreva a mensagem antes de liberar o envio.', 'erro'); ir($volta); }
+            if ($d['fim'] && $d['fim'] < $d['inicio']) $d['fim'] = null;
+            try {
+                if (!$camp) {
+                    $pdo->prepare('INSERT INTO crm_campanhas (grupo_id, titulo, token, criado_por, criado_em) VALUES (?,?,?,?,?)')->execute([$gid, $d['titulo'], camp_token(), $quem, $agora]);
+                    $cid = (int)$pdo->lastInsertId(); $camp = camp_por_id($cid);
+                    registrar_log('campanha', $cid, 'Campanha criada', $d['titulo'] . ' · grupo ' . $g['nome']);
+                }
+                $img = camp_salvar_imagem($_FILES['imagem'] ?? null, $cid);
+                if ($img) { camp_apagar_imagem($camp['imagem']); $d['imagem'] = $img; }
+                $d['atualizado_em'] = $agora;
+                if ($acao === 'camp_liberar') { $d['status'] = 'liberada'; if ($camp['status'] !== 'liberada') { $d['liberada_por'] = $quem; $d['liberada_em'] = $agora; } }
+                $pdo->prepare('UPDATE crm_campanhas SET ' . implode(' = ?, ', array_keys($d)) . ' = ? WHERE id = ?')->execute(array_merge(array_values($d), [$cid]));
+            } catch (Throwable $ex) { flash('A mensagem não foi salva: ' . $ex->getMessage(), 'erro'); ir($volta); }
+            registrar_log('campanha', $cid, $acao === 'camp_liberar' ? 'Campanha liberada para envio' : 'Mensagem da campanha salva', $d['titulo'] . ' · ' . mb_strimwidth($d['texto'], 0, 300, '…'));
+            if ($acao === 'camp_liberar' && function_exists('ia_gerar_alertas')) ia_gerar_alertas(true);
+            flash($acao === 'camp_liberar' ? 'Campanha liberada. Os envios aparecem em Sugestões da IA › Alertas e sugestões' . ($d['inicio'] > date('Y-m-d') ? ' a partir de ' . data_br($d['inicio']) : '') . '.' : 'Mensagem salva como rascunho.');
+            ir($volta);
+        }
+        ir($volta);
+    }
     if ($acao === 'recalcular' && $g) {
         [$e, $s] = grupos_recalcular($g);
         registrar_log('grupo', $gid, 'Recalculado', "$e entraram, $s saíram");
@@ -78,6 +129,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (isset($_GET['exportar'], $_GET['ver'])) {
     if (!pode_gerir_grupos()) negar();
     $gid = (int)$_GET['ver']; $canal = $_GET['exportar'];
+    if ($canal === 'vcard') {
+        $g = $pdo->query('SELECT * FROM crm_grupos WHERE id = ' . $gid)->fetch();
+        if (!$g) ir('crm_grupos.php');
+        $s = $pdo->prepare("SELECT c.nome, c.telefone_e164, c.aceita_whatsapp FROM crm_grupo_membros m JOIN clientes c ON c.id = m.cliente_id WHERE m.grupo_id = ? AND m.origem <> 'excluido' ORDER BY c.nome");
+        $s->execute([$gid]);
+        $rows = array_filter($s->fetchAll(), fn($c) => e_celular($c['telefone_e164']) && !recusou($c['aceita_whatsapp']));
+        registrar_log('grupo', $gid, 'Exportação', count($rows) . ' contato(s) · vCard');
+        header('Content-Type: text/vcard; charset=utf-8');
+        header('Content-Disposition: attachment; filename="contatos-' . preg_replace('/[^a-z0-9]+/', '-', chave_nome($g['nome'])) . '.vcf"');
+        foreach ($rows as $c) echo camp_vcard($c['nome'], $c['telefone_e164'], $g['nome']);
+        exit;
+    }
     $g = $pdo->query('SELECT * FROM crm_grupos WHERE id = ' . $gid)->fetch();
     if (!$g) ir('crm_grupos.php');
     $s = $pdo->prepare("SELECT c.* FROM crm_grupo_membros m JOIN clientes c ON c.id = m.cliente_id WHERE m.grupo_id = ? AND m.origem <> 'excluido' ORDER BY c.nome");
@@ -107,7 +170,7 @@ if (!isset($form)) {
     if (isset($_GET['novo']) && pode_gerir_grupos()) $form = ['id' => 0, 'nome' => '', 'descricao' => '', 'tipo' => 'dinamico', 'combinacao' => 'todas', 'regras' => '[]', 'ativo' => 1, 'ordem' => 100];
     if (!empty($_GET['editar']) && pode_gerir_grupos()) $form = $pdo->query('SELECT * FROM crm_grupos WHERE id = ' . (int)$_GET['editar'])->fetch() ?: null;
 }
-$titulo = 'Grupos de campanha';
+$titulo = $ver && $form === null ? 'Configurar grupo' : 'Grupos de campanha';
 require __DIR__ . '/inc/topo.php';
 ?>
 <?php if ($form !== null): $regras = json_decode((string)$form['regras'], true) ?: []; while (count($regras) < 3) $regras[] = ['campo' => '', 'op' => '', 'valor' => '']; ?>
@@ -226,12 +289,71 @@ $qsBase = 'ver=' . (int)$ver['id'];
   <div class="card"><span>Com e-mail</span><strong><?= (int)$k['email'] ?></strong></div>
   <div class="card alerta"><span>Recusaram WhatsApp</span><strong><?= (int)$k['recusa_wa'] ?></strong></div>
 </div>
+<?php if (camp_v11()): $camp = camp_do_grupo($ver['id']); $cc = $camp ? camp_contagem($camp) : null; $podeCamp = pode_gerir_grupos();
+  $hist = $pdo->query("SELECT * FROM crm_campanhas WHERE grupo_id = " . (int)$ver['id'] . " AND status = 'encerrada' ORDER BY id DESC LIMIT 10")->fetchAll();
+  $nome1 = nome_saudacao($GLOBALS['USUARIO']['nome']); ?>
+<section class="cartao campanha" id="campanha">
+  <div class="ficha-topo"><strong>Mensagem da campanha</strong>
+    <?php if ($camp): ?><span class="tag <?= $camp['status'] === 'liberada' ? 'ok' : 'neutra' ?>"><?= e(nome_status_campanha($camp['status'])) ?></span><?php endif; ?>
+    <?php if ($cc): ?><span class="sub"><?= $cc['enviados'] ?> enviada(s) · <?= $cc['pendentes'] ?> na fila<?= $cc['pulados'] ? ' · ' . $cc['pulados'] . ' pulada(s)' : '' ?> · <?= $cc['sem_celular'] ?> sem celular · <?= $cc['recusaram'] ?> recusaram<?= $camp['so_optin'] ? ' · ' . $cc['sem_optin'] . ' sem autorização' : '' ?></span><?php endif; ?>
+  </div>
+  <p class="sub">Escreva aqui a mensagem do grupo. Ao <strong>liberar para envio</strong>, ela aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a>, onde quem opera o WhatsApp dispara um cliente por vez (o sistema abre a conversa com o texto pronto e passa para o próximo).</p>
+  <?php if ($podeCamp): ?>
+  <form method="post" enctype="multipart/form-data">
+    <?= csrf_campo() ?><input type="hidden" name="grupo_id" value="<?= (int)$ver['id'] ?>"><input type="hidden" name="campanha_id" value="<?= (int)($camp['id'] ?? 0) ?>">
+    <div class="grade">
+      <label class="l2">Nome da campanha (uso interno)<input name="titulo" maxlength="120" value="<?= e($camp['titulo'] ?? $ver['nome'] . ' · ' . rotulo_mes(date('Y-m'))) ?>"></label>
+      <label>Quem dispara<select name="area"><?php foreach (['b2c' => 'Comercial B2C', 'b2b' => 'Comercial B2B', 'enoturismo' => 'Enoturismo e eventos'] as $k => $v): ?><option value="<?= $k ?>" <?= ($camp['area'] ?? 'b2c') === $k ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select></label>
+      <label class="check"><input type="checkbox" name="so_optin" <?= !empty($camp['so_optin']) ? 'checked' : '' ?>> Só quem autorizou WhatsApp de marketing</label>
+      <label>Começar em<input type="date" name="inicio" value="<?= e($camp['inicio'] ?? date('Y-m-d')) ?>"></label>
+      <label>Encerrar em (opcional)<input type="date" name="fim" value="<?= e($camp['fim'] ?? '') ?>"></label>
+    </div>
+    <?= editor_whatsapp('texto', $camp['texto'] ?? '', $camp && $camp['imagem'] ? camp_url_imagem($camp) : null,
+        ['ligado' => !empty($camp['cartao']), 'titulo' => $camp ? ($camp['cartao_titulo'] ?: $camp['titulo']) : '', 'texto' => $camp['cartao_texto'] ?? '', 'link' => $camp ? camp_link_cartao($camp) : url_base()]) ?>
+    <div class="grade camp-img">
+      <label class="l2">Imagem (cartão, convite, foto do vinho) <input type="file" name="imagem" accept="image/jpeg,image/png,image/webp"><span class="sub">JPG, PNG ou WEBP até 8 MB; o sistema reduz para 1200 px.</span></label>
+      <?php if ($camp && $camp['imagem']): ?><div class="l2 camp-mini"><img src="<?= e(camp_url_imagem($camp)) ?>" alt=""><button class="peq perigo" name="acao" value="camp_remover_imagem" formnovalidate onclick="return confirm('Remover a imagem?')">Remover imagem</button></div><?php endif; ?>
+      <label class="check l4"><input type="checkbox" name="cartao" <?= !empty($camp['cartao']) ? 'checked' : '' ?>> Mandar a imagem como <strong>cartão com link</strong> no fim da mensagem (o WhatsApp mostra a foto, o título e a descrição)</label>
+      <label class="l2">Título do cartão<input name="cartao_titulo" maxlength="120" value="<?= e($camp['cartao_titulo'] ?? '') ?>" placeholder="ex.: Kit Dia das Mães · Vinícola Brasília"></label>
+      <label class="l2">Descrição do cartão<input name="cartao_texto" maxlength="300" value="<?= e($camp['cartao_texto'] ?? '') ?>" placeholder="uma frase curta"></label>
+    </div>
+    <div class="acoes" style="flex-wrap:wrap;margin-top:12px">
+      <button class="sec" name="acao" value="camp_salvar">Salvar rascunho</button>
+      <button name="acao" value="camp_liberar" onclick="return confirm('Liberar esta mensagem para envio? Ela vai para Alertas e sugestões.')"><?= ($camp['status'] ?? '') === 'liberada' ? 'Salvar alterações (já liberada)' : 'Salvar e liberar para envio' ?></button>
+      <?php if ($camp && $camp['texto']): ?><a class="btn sec" target="_blank" rel="noopener" href="<?= e('https://wa.me/?text=' . rawurlencode(camp_texto($camp, ['nome' => $nome1, 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília']))) ?>" title="Abre o WhatsApp para você escolher um contato (ex.: você mesmo) e conferir como a mensagem chega">Testar no meu WhatsApp</a><?php endif; ?>
+      <?php if ($camp && $camp['cartao']): ?><a class="btn sec" target="_blank" href="<?= e(camp_link_cartao($camp)) ?>">Ver o cartão</a><?php endif; ?>
+      <?php if ($camp): ?><button class="perigo" name="acao" value="camp_encerrar" formnovalidate onclick="return confirm('Encerrar esta campanha? Ela sai da fila de envios; o histórico fica guardado.')">Encerrar campanha</button><?php endif; ?>
+    </div>
+  </form>
+  <details class="dicas"><summary>Como tirar o máximo do WhatsApp sem a API</summary>
+    <ul>
+      <li><strong>Imagem:</strong> o link do WhatsApp só leva texto. Com o <em>cartão com link</em> ligado, a mensagem termina com um endereço da vinícola e o WhatsApp mostra a imagem grande, com título e descrição. Na fila de envio também há o botão <em>Copiar imagem</em>: cole (Ctrl+V) na conversa para mandar a foto solta.</li>
+      <li><strong>Prévia do link:</strong> o WhatsApp só mostra a foto do cartão para quem tem o número da vinícola salvo ou já conversou com ela. Por isso, o cartão funciona melhor com clientes que já falam com vocês; para os demais, a foto colada é mais garantida.</li>
+      <li><strong>Vários de uma vez:</strong> sem a API não existe disparo em massa; a fila abre um cliente por vez e já deixa o próximo pronto. No aplicativo do WhatsApp instalado no computador, cada envio leva poucos segundos.</li>
+      <li><strong>Lista de transmissão:</strong> no WhatsApp Business do celular dá para mandar a mesma mensagem para até centenas de contatos de uma vez, mas ela só chega a quem salvou o número da vinícola. Para montar a lista, <a href="crm_grupos.php?<?= 'ver=' . (int)$ver['id'] ?>&exportar=vcard">baixe os contatos do grupo (vCard)</a> e importe no celular.</li>
+      <li><strong>Evite bloqueios:</strong> mande em blocos com pausas, use o nome da pessoa ({nome}) e priorize quem autorizou ou já é cliente. Muitas denúncias de "spam" podem restringir o número.</li>
+    </ul>
+  </details>
+  <?php elseif ($camp): ?>
+  <div class="wa-tela"><div class="wa-bolha"><?php if ($camp['imagem']): ?><img class="wa-img" src="<?= e(camp_url_imagem($camp)) ?>" alt=""><?php endif; ?><div class="wa-txt"><?= wa_formatar_html($camp['texto']) ?></div></div></div>
+  <?php else: ?><p class="sub">Nenhuma mensagem cadastrada.</p><?php endif; ?>
+  <?php if ($hist): ?>
+  <h2>Campanhas anteriores</h2>
+  <div class="rolagem"><table class="mini"><thead><tr><th>Campanha</th><th>Liberada em</th><th class="num">Enviadas</th></tr></thead><tbody>
+    <?php foreach ($hist as $h): $ne = (int)$pdo->query("SELECT COUNT(*) FROM crm_campanha_envios WHERE campanha_id = " . (int)$h['id'] . " AND situacao = 'enviado'")->fetchColumn(); ?>
+    <tr><td class="nome"><?= e($h['titulo']) ?><br><span class="det-rk"><?= e(mb_strimwidth((string)$h['texto'], 0, 120, '…')) ?></span></td><td><?= $h['liberada_em'] ? date('d/m/Y', strtotime($h['liberada_em'])) : '—' ?></td><td class="num"><?= $ne ?></td></tr>
+    <?php endforeach; ?></tbody></table></div>
+  <?php endif; ?>
+</section>
+<?php endif; ?>
+
 <div class="barra-lista">
   <?php if (pode_gerir_grupos()): ?>
-    <a class="btn peq" href="crm_grupos.php?editar=<?= (int)$ver['id'] ?>">Editar grupo</a>
+    <a class="btn peq" href="crm_grupos.php?editar=<?= (int)$ver['id'] ?>">Editar regras do grupo</a>
     <a class="btn peq sec" href="crm_grupos.php?<?= $qsBase ?>&exportar=whatsapp">Exportar para WhatsApp</a>
     <a class="btn peq sec" href="crm_grupos.php?<?= $qsBase ?>&exportar=email">Exportar para e-mail</a>
     <a class="btn peq sec" href="crm_grupos.php?<?= $qsBase ?>&exportar=todos">Exportar todos</a>
+    <a class="btn peq sec" href="crm_grupos.php?<?= $qsBase ?>&exportar=vcard" title="Contatos para salvar no celular da vinícola (lista de transmissão)">Contatos (vCard)</a>
     <?php if ($ver['tipo'] === 'dinamico'): ?><form method="post"><?= csrf_campo() ?><input type="hidden" name="grupo_id" value="<?= (int)$ver['id'] ?>"><button class="peq sec" name="acao" value="recalcular">Recalcular agora</button></form><?php endif; ?>
   <?php endif; ?>
   <a class="btn peq sec" href="clientes.php?grupo=<?= (int)$ver['id'] ?>">Abrir na lista de clientes</a>
@@ -302,7 +424,7 @@ $qsBase = 'ver=' . (int)$ver['id'];
       <td class="num"><?= (int)$k['optin_wa'] ?></td>
       <td class="num"><?= (int)$k['email'] ?></td>
       <td class="acoes">
-        <a class="btn peq sec" href="crm_grupos.php?ver=<?= (int)$g['id'] ?>">Ver</a>
+        <a class="btn peq sec" href="crm_grupos.php?ver=<?= (int)$g['id'] ?>">Configurar</a>
         <?php if (eh_admin()): ?>
         <form method="post" onsubmit="return confirm('Excluir o grupo <?= e(addslashes($g['nome'])) ?>? Os clientes continuam cadastrados.')"><?= csrf_campo() ?><input type="hidden" name="grupo_id" value="<?= (int)$g['id'] ?>"><button class="peq perigo" name="acao" value="excluir_grupo">Excluir</button></form>
         <?php endif; ?>

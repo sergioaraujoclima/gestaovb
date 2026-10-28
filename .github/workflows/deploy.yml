@@ -47,6 +47,7 @@ jobs:
           inc/config.php
           uploads/comprovantes/**
           uploads/importacoes/**
+          uploads/campanhas/**
 
     - name: 🩺 Conferindo se o sistema está no ar
       run: |

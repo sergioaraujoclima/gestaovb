@@ -20,7 +20,10 @@ function ia_perfil_area() { return ['gerente_geral' => 'geral', 'gerente_b2b' =>
 function ia_areas_de($perfis) {
     $p = expandir_perfis($perfis);
     if (array_intersect(['admin', 'gerente_geral'], $p)) return array_keys(ia_areas());
-    return array_values(array_intersect_key(ia_perfil_area(), array_flip($p)));
+    $a = array_values(array_intersect_key(ia_perfil_area(), array_flip($p)));
+    // CRM · Marketing opera as campanhas do consumidor final: vê os alertas do Comercial B2C (sem receber os e-mails de gerente).
+    if (in_array('marketing', $p, true) && !in_array('b2c', $a, true)) $a[] = 'b2c';
+    return $a;
 }
 function ia_areas_do_usuario() { return ia_areas_de(perfil()); }
 function pode_ver_ia() { return (bool)ia_areas_do_usuario(); }
@@ -123,7 +126,7 @@ function ia_gerar_alertas($forcar = false) {
     if (!$forcar && $ultima && strtotime($ultima) > time() - 3600) return [];
     @set_time_limit(120);
     $erros = [];
-    foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral'] as $f) {
+    foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral', 'ia_r_campanhas'] as $f) {
         try { $f(); } catch (Throwable $ex) { $erros[] = $f . ': ' . $ex->getMessage(); }
     }
     config_salvar('ia_ultima_regra', date('Y-m-d H:i:s'));
@@ -370,6 +373,25 @@ function ia_r_geral() {
             'texto' => 'Confira o preço de venda ou o custo cadastrado no ERP.',
             'dados' => ['itens' => array_map(fn($r) => ['rot' => $r['d'], 'detalhe' => number_format((float)$r['q'], 0, ',', '.') . ' un. · prejuízo ' . brl(-$r['l'])], $ab)],
             'link' => 'vendas_produtos.php', 'valido_ate' => $dom]);
+    }
+}
+
+// Campanhas liberadas nos grupos: um cartão por dia em "Para hoje" enquanto houver clientes na fila.
+function ia_r_campanhas() {
+    if (!function_exists('camp_v11') || !camp_v11()) return;
+    $hoje = date('Y-m-d');
+    foreach (ia_q("SELECT c.*, g.nome grupo_nome FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.status = 'liberada'") as $c) {
+        if ($c['fim'] && $c['fim'] < $hoje) {
+            db()->prepare("UPDATE crm_campanhas SET status = 'encerrada', atualizado_em = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $c['id']]);
+            continue;
+        }
+        if ($c['inicio'] && $c['inicio'] > $hoje) continue;
+        $n = camp_contagem($c);
+        if (!$n['pendentes']) continue;
+        ia_cartao(['chave' => 'campanha:' . $c['id'] . ':' . $hoje, 'area' => $c['area'], 'tipo' => 'campanha', 'prioridade' => 'media',
+            'titulo' => 'Campanha "' . $c['titulo'] . '": ' . $n['pendentes'] . ' cliente(s) para enviar',
+            'texto' => 'Grupo ' . $c['grupo_nome'] . ($c['fim'] ? ' · até ' . data_br($c['fim']) : '') . '. Abra a fila de envio: o sistema abre cada conversa com a mensagem pronta e já deixa o próximo cliente pronto.',
+            'dados' => ['campanha_id' => (int)$c['id']], 'link' => 'ia_disparo.php?c=' . $c['id'], 'valido_ate' => $hoje]);
     }
 }
 

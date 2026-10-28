@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ir('ia_config.php');
     }
     if ($acao === 'mensagens') {
-        foreach (array_merge(array_keys($msgs), ['endereco_vinicola', 'link_avaliacao']) as $k) {
+        foreach (array_merge(array_keys($msgs), ['endereco_vinicola', 'link_avaliacao', 'whatsapp_vinicola']) as $k) {
             $v = trim(str_replace("\r", '', (string)($_POST[$k] ?? '')));
             config_salvar($k, $v === trim(ia_config_padrao()[$k] ?? '') ? '' : mb_substr($v, 0, 1500));
         }
@@ -88,6 +88,7 @@ require __DIR__ . '/inc/topo.php';
   <form method="post" class="grade">
     <?= csrf_campo() ?><input type="hidden" name="acao" value="mensagens">
     <label class="l2">Endereço / como chegar ({endereco})<input name="endereco_vinicola" maxlength="300" value="<?= e(config('endereco_vinicola')) ?>"></label>
+    <label class="l2">WhatsApp da vinícola (botão do cartão das campanhas)<input name="whatsapp_vinicola" maxlength="20" placeholder="61999990000" value="<?= e(config('whatsapp_vinicola', '')) ?>"></label>
     <label class="l2">Link de avaliação no Google ({link_avaliacao})<input name="link_avaliacao" maxlength="300" placeholder="https://g.page/r/..." value="<?= e(config('link_avaliacao', '')) ?>"></label>
     <?php foreach ($msgs as $k => $rot): ?><label class="l2"><?= e($rot) ?><textarea name="<?= $k ?>" rows="4"><?= e(config($k)) ?></textarea></label><?php endforeach; ?>
     <div class="l4 acoes"><button>Salvar mensagens</button></div>

@@ -2,7 +2,7 @@
 define('INICIO_PAGINA', microtime(true));
 require __DIR__ . '/config.php';
 define('APP_NOME', 'Gestão Vinícola Brasília');
-define('APP_VERSAO', '9.0');
+define('APP_VERSAO', '9.1');
 define('DIR_COMPROVANTES', dirname(__DIR__) . '/uploads/comprovantes');
 date_default_timezone_set('America/Sao_Paulo');
 

@@ -659,3 +659,4 @@ function crm_classificar_faltantes() {
 require_once __DIR__ . '/grupos.php';
 require_once __DIR__ . '/vendas.php';
 require_once __DIR__ . '/ia.php';
+require_once __DIR__ . '/campanhas.php';

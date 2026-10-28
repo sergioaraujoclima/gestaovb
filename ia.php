@@ -84,6 +84,14 @@ function ia_render_cartao($c, $aba, $tiposMarketing) {
         . '</header>';
     $h .= '<h3>' . e($c['titulo']) . '</h3>';
     if ($c['texto']) $h .= '<p class="ia-texto">' . nl2br(e($c['texto'])) . '</p>';
+    if ($c['tipo'] === 'campanha' && !empty($d['campanha_id']) && function_exists('camp_v11') && camp_v11() && ($cp = camp_por_id($d['campanha_id']))) {
+        $n = camp_contagem($cp);
+        $h .= '<div class="ia-camp">' . ($cp['imagem'] ? '<img src="' . e(camp_url_imagem($cp)) . '" alt="">' : '') . '<div class="wa-bolha mini"><div class="wa-txt">' . wa_formatar_html(mb_strimwidth(strtr((string)$cp['texto'], ['{nome}' => 'Maria', '{nome_completo}' => 'Maria da Silva', '{cidade}' => 'Brasília']), 0, 260, '…')) . '</div></div></div>'
+            . '<div class="disp-prog"><span style="width:' . ($n['total'] ? round(($n['enviados'] + $n['pulados']) * 100 / $n['total']) : 0) . '%"></span></div>'
+            . '<p class="ia-prog">' . $n['enviados'] . ' enviada(s) · ' . $n['pendentes'] . ' na fila</p>'
+            . '<p class="acoes"><a class="btn wa" href="ia_disparo.php?c=' . (int)$cp['id'] . '">Iniciar envio ▶</a>' . (pode_ver_crm() ? '<a class="btn peq sec" href="crm_grupos.php?ver=' . (int)$cp['grupo_id'] . '#campanha">Ver mensagem</a>' : '') . '</p>';
+        $c['link'] = null;
+    }
     if ($contatos) {
         $h .= '<div class="ia-contatos"><div class="ia-prog">' . count($env) . ' de ' . count($contatos) . ' contatados</div><ul>';
         foreach ($contatos as $i => $p) {
