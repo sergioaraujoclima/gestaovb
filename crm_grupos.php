@@ -370,6 +370,7 @@ $aba = in_array($_GET['aba'] ?? '', ['whatsapp', 'email', 'membros'], true) ? $_
     </div>
     <?= editor_whatsapp('texto', $camp['texto'] ?? '', $camp && $camp['imagem'] ? camp_url_imagem($camp) : null,
         ['ligado' => !empty($camp['cartao']), 'titulo' => $camp ? ($camp['cartao_titulo'] ?: $camp['titulo']) : '', 'texto' => $camp['cartao_texto'] ?? '', 'link' => $camp ? camp_link_cartao($camp) : url_base()]) ?>
+    <?php if (function_exists('wa_optout') && config('wa_optout_ligado', '1') === '1' && trim((string)config('wa_optout')) !== ''): ?><p class="sub">No fim de cada mensagem o sistema acrescenta: <em><?= e(config('wa_optout')) ?></em> Quem responder N deve ser registrado em <a href="ia.php#optout">Sugestões da IA › Registrar “N”</a>.<?= eh_admin() ? ' (texto em <a href="ia_config.php#mensagens">Configuração</a>)' : '' ?></p><?php endif; ?>
     <div class="grade camp-img">
       <label class="l2">Imagem (cartão, convite, foto do vinho) <input type="file" name="imagem" accept="image/jpeg,image/png,image/webp"><span class="sub">JPG, PNG ou WEBP até 8 MB; o sistema reduz para 1200 px.</span></label>
       <?php if ($camp && $camp['imagem']): ?><div class="l2 camp-mini"><img src="<?= e(camp_url_imagem($camp)) ?>" alt=""><button class="peq perigo" name="acao" value="camp_remover_imagem" formnovalidate onclick="return confirm('Remover a imagem?')">Remover imagem</button></div><?php endif; ?>
@@ -380,7 +381,7 @@ $aba = in_array($_GET['aba'] ?? '', ['whatsapp', 'email', 'membros'], true) ? $_
     <div class="acoes" style="flex-wrap:wrap;margin-top:12px">
       <button class="sec" name="acao" value="camp_salvar">Salvar rascunho</button>
       <button name="acao" value="camp_liberar" onclick="return confirm('Liberar esta mensagem para envio? Ela vai para Alertas e sugestões.')"><?= ($camp['status'] ?? '') === 'liberada' ? 'Salvar alterações (já liberada)' : 'Salvar e liberar para envio' ?></button>
-      <?php if ($camp && $camp['texto']): ?><a class="btn sec" target="_blank" rel="noopener" href="<?= e('https://wa.me/?text=' . rawurlencode(camp_texto($camp, ['nome' => $nome1, 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília']))) ?>" title="Abre o WhatsApp para você escolher um contato (ex.: você mesmo) e conferir como a mensagem chega">Testar no meu WhatsApp</a><?php endif; ?>
+      <?php if ($camp && $camp['texto']): ?><a class="btn sec" target="_blank" rel="noopener" href="<?= e('https://api.whatsapp.com/send/?text=' . rawurlencode(camp_texto($camp, ['nome' => $nome1, 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília']))) ?>" title="Abre o WhatsApp para você escolher um contato (ex.: você mesmo) e conferir como a mensagem chega">Testar no meu WhatsApp</a><?php endif; ?>
       <?php if ($camp && $camp['cartao']): ?><a class="btn sec" target="_blank" href="<?= e(camp_link_cartao($camp)) ?>">Ver o cartão</a><?php endif; ?>
       <?php if ($camp): ?><button class="perigo" name="acao" value="camp_encerrar" formnovalidate onclick="return confirm('Encerrar esta campanha? Ela sai da fila de envios; o histórico fica guardado.')">Encerrar campanha</button><?php endif; ?>
     </div>

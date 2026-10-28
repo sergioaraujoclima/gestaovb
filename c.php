@@ -52,7 +52,7 @@ p{margin:0 0 16px;color:#544}
   <?php if ($img): ?><img src="<?= e($img) ?>" alt="<?= e($titulo) ?>"><?php endif; ?>
   <h1><?= e($titulo) ?></h1>
   <?php if ($texto): ?><p><?= e($texto) ?></p><?php endif; ?>
-  <?php if ($zap): ?><a class="b" href="https://wa.me/<?= e($zap) ?>?text=<?= rawurlencode('Olá! Vi a mensagem "' . $titulo . '" e quero saber mais.') ?>">Falar no WhatsApp</a><?php endif; ?>
+  <?php if ($zap): ?><a class="b" href="https://api.whatsapp.com/send/?phone=<?= e($zap) ?>&text=<?= rawurlencode('Olá! Vi a mensagem "' . $titulo . '" e quero saber mais.') ?>">Falar no WhatsApp</a><?php endif; ?>
   <a class="b s" href="https://www.vinicolabrasilia.com.br">Conhecer a vinícola</a>
   <?php endif; ?>
 </div></body>

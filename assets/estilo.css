@@ -363,3 +363,11 @@ button.link{background:none;border:0;color:var(--vinho2);text-decoration:underli
 [hidden]{display:none!important}
 input[type=color]{height:40px;padding:3px;cursor:pointer}
 .ia-busca{padding:5px 8px;font-size:13px;margin:2px 0 4px}
+/* v9.6 · Registrar "N" (descadastro do WhatsApp) */
+.ia-optout{margin:0 0 18px}
+.ia-optout summary{cursor:pointer;list-style:revert}
+.ia-optout-busca{display:flex;gap:8px;margin:12px 0 8px;flex-wrap:wrap}
+.ia-optout-busca input{flex:1 1 260px;min-width:0}
+.ia-optout-lista{list-style:none;margin:0;padding:0}
+.ia-optout-lista li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--borda,#e5e5e5);flex-wrap:wrap}
+.ia-optout-lista form{display:flex;gap:6px;align-items:center}

@@ -29,7 +29,7 @@ if (eh_admin()) $modulos['Administração'] = ['usuarios.php' => 'Controle de ac
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($titulo ?? APP_NOME) ?> · <?= e(APP_NOME) ?></title>
-<link rel="stylesheet" href="assets/estilo.css?v=9.5">
+<link rel="stylesheet" href="assets/estilo.css?v=9.6">
 </head>
 <body>
 <div class="app">

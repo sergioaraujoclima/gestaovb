@@ -52,6 +52,7 @@ function ia_config_padrao() {
         'msg_recompra' => "Olá, {nome}! Faz um tempo que não nos vemos por aqui. Chegaram novidades na Vinícola Brasília e separamos uma sugestão especial para você. Posso te mandar?",
         'msg_segunda_compra' => "Olá, {nome}! Obrigado pela sua compra na Vinícola Brasília. Gostou do vinho? Temos outros rótulos que combinam com o seu gosto. Posso te indicar?",
         'msg_b2b_reposicao' => "Olá! Aqui é da Vinícola Brasília. Passando para saber como estão os nossos vinhos aí na {nome}. Precisa de reposição? Temos novidades na tabela deste mês.",
+        'wa_optout' => 'Se não quiser mais receber nossas mensagens, responda *N*.',
         'msg_b2b_boas_vindas' => "Olá! Aqui é da Vinícola Brasília. Obrigado pela primeira compra da {nome}! Fico à disposição para pedidos, material de divulgação e treinamento da equipe sobre os nossos vinhos.",
     ];
 }
@@ -76,7 +77,22 @@ function ia_mensagem($modelo, $vars) {
 }
 function whatsapp_link($e164, $texto) {
     $n = preg_replace('/\D/', '', (string)$e164);
-    return $n ? 'https://wa.me/' . $n . '?text=' . rawurlencode($texto) : '';
+    // Direto no api.whatsapp.com: o redirecionamento do wa.me estraga os emojis (chegam como "�").
+    return $n ? 'https://api.whatsapp.com/send/?phone=' . $n . '&text=' . rawurlencode($texto) : '';
+}
+// Linha de descadastro no fim das mensagens de marketing ("responda N"). Quem responder N é marcado à mão (Sugestões da IA › Registrar "N").
+function wa_optout($t) {
+    $r = trim((string)config('wa_optout'));
+    if ($t === null || $t === '' || $r === '' || config('wa_optout_ligado', '1') !== '1' || mb_stripos($t, $r) !== false) return $t;
+    return rtrim($t) . "\n\n" . $r;
+}
+// Campanha de WhatsApp de um grupo de aniversariantes (regra "Mês de aniversário"): o texto dela vale para o cartão de aniversário.
+function ia_camp_aniversario() {
+    if (!function_exists('camp_v11') || !camp_v11()) return null;
+    $canal = function_exists('camp_v12') && camp_v12() ? " AND c.canal = 'whatsapp'" : '';
+    foreach (ia_q("SELECT c.*, g.regras FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.status <> 'encerrada' AND g.ativo = 1 AND c.texto IS NOT NULL AND c.texto <> ''$canal ORDER BY c.status = 'liberada' DESC, c.id DESC") as $c)
+        foreach (json_decode((string)$c['regras'], true) ?: [] as $r) if (($r['campo'] ?? '') === 'mes_aniversario') return $c;
+    return null;
 }
 // Primeiro nome para a mensagem ("MARIA DA SILVA" → "Maria"). Empresas ficam com o nome inteiro.
 function nome_saudacao($nome, $tipo = 'PF') {
@@ -84,10 +100,11 @@ function nome_saudacao($nome, $tipo = 'PF') {
     $p = explode(' ', trim(nome_proprio($nome)));
     return $p[0] ?? $nome;
 }
-function ia_contato($c, $modelo = null, $vars = [], $detalhe = '') {
+function ia_contato($c, $modelo = null, $vars = [], $detalhe = '', $texto = null) {
     $tel = $c['telefone_e164'] ?? null;
     if (!$tel && !empty($c['telefone'])) [, $tel] = normalizar_telefone($c['telefone']);
-    $msg = $modelo ? ia_mensagem($modelo, $vars + ['nome' => nome_saudacao($c['nome'], $c['tipo_pessoa'] ?? 'PF')]) : null;
+    $msg = $texto ?? ($modelo ? ia_mensagem($modelo, $vars + ['nome' => nome_saudacao($c['nome'], $c['tipo_pessoa'] ?? 'PF')]) : null);
+    if ($texto === null && in_array($modelo, ['msg_convite_clube', 'msg_aniversario', 'msg_recompra', 'msg_segunda_compra'], true)) $msg = wa_optout($msg);
     return ['cliente_id' => (int)$c['id'], 'nome' => $c['nome'], 'tel' => $tel, 'detalhe' => $detalhe, 'msg' => $msg,
             'recusou' => isset($c['aceita_whatsapp']) && $c['aceita_whatsapp'] !== null && $c['aceita_whatsapp'] !== '' && (int)$c['aceita_whatsapp'] === 0];
 }
@@ -260,7 +277,7 @@ function ia_r_b2c() {
     $hoje = date('Y-m-d'); $sem = ia_semana(); $dom = date('Y-m-d', strtotime('sunday this week'));
     // Aniversariantes dos próximos 7 dias.
     $aniv = [];
-    foreach (ia_q("SELECT id, nome, telefone, telefone_e164, aceita_whatsapp, data_nascimento, tipo_pessoa FROM clientes WHERE tipo_pessoa = 'PF' AND data_nascimento IS NOT NULL") as $c) {
+    foreach (ia_q("SELECT id, nome, telefone, telefone_e164, aceita_whatsapp, data_nascimento, tipo_pessoa, cidade FROM clientes WHERE tipo_pessoa = 'PF' AND data_nascimento IS NOT NULL") as $c) {
         $d = date('Y') . substr($c['data_nascimento'], 4);
         if (!checkdate((int)substr($d, 5, 2), (int)substr($d, 8, 2), (int)substr($d, 0, 4))) continue;
         if ($d < $hoje) $d = (date('Y') + 1) . substr($c['data_nascimento'], 4);
@@ -268,10 +285,12 @@ function ia_r_b2c() {
         if ($faltam <= 7) $aniv[] = $c + ['_d' => $d, '_f' => $faltam];
     }
     usort($aniv, fn($a, $b) => $a['_f'] <=> $b['_f']);
+    $campAniv = ia_camp_aniversario();   // se houver campanha de aniversariantes, o texto (e o cartão/imagem) dela vale aqui
     if ($aniv) ia_cartao(['chave' => "aniversarios:$hoje", 'area' => 'b2c', 'tipo' => 'aniversario', 'prioridade' => 'media',
         'titulo' => 'Aniversariantes dos próximos 7 dias: ' . count($aniv) . ' cliente(s)',
-        'texto' => 'Uma mensagem no dia (com uma condição especial) costuma gerar visita ou compra. Quem recusou WhatsApp de marketing aparece marcado.',
-        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)')), $aniv)],
+        'texto' => 'Uma mensagem no dia (com uma condição especial) costuma gerar visita ou compra. Quem recusou WhatsApp de marketing aparece marcado.'
+            . ($campAniv ? "\nTexto: campanha \"" . $campAniv['titulo'] . '" (Grupos de campanha).' : "\nTexto: mensagem padrão de aniversário (Configuração). Crie uma campanha de WhatsApp num grupo de aniversariantes para usar o seu texto."),
+        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)'), $campAniv ? camp_texto($campAniv, $c) : null), $aniv)],
         'link' => 'crm_grupos.php', 'valido_ate' => $hoje]);
     if (!function_exists('vendas_v9') || !vendas_v9()) return;
     // Recompra: pessoas que compravam com frequência e sumiram.

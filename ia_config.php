@@ -5,7 +5,7 @@ exigir_admin();
 ia_exigir_migracao();
 $pdo = db();
 $msgs = ['msg_tour_chegada' => 'Tour · boas-vindas (1 hora antes)', 'msg_tour_amanha' => 'Tour · confirmação na véspera', 'msg_tour_agradecimento' => 'Tour · agradecimento no dia seguinte',
-    'msg_convite_clube' => 'Convite para o clube (visitantes)', 'msg_aniversario' => 'Aniversário', 'msg_recompra' => 'Recompra (recorrentes que sumiram)',
+    'msg_convite_clube' => 'Convite para o clube (visitantes)', 'msg_aniversario' => 'Aniversário (usada quando não há campanha de WhatsApp num grupo de aniversariantes)', 'msg_recompra' => 'Recompra (recorrentes que sumiram)',
     'msg_segunda_compra' => 'Segunda compra', 'msg_b2b_reposicao' => 'B2B · reposição', 'msg_b2b_boas_vindas' => 'B2B · boas-vindas (primeira compra)'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -31,7 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ir('ia_config.php');
     }
     if ($acao === 'mensagens') {
-        foreach (array_merge(array_keys($msgs), ['endereco_vinicola', 'link_avaliacao', 'whatsapp_vinicola']) as $k) {
+        config_salvar('wa_optout_ligado', isset($_POST['wa_optout_ligado']) ? '1' : '0');
+        foreach (array_merge(array_keys($msgs), ['endereco_vinicola', 'link_avaliacao', 'whatsapp_vinicola', 'wa_optout']) as $k) {
             $v = trim(str_replace("\r", '', (string)($_POST[$k] ?? '')));
             config_salvar($k, $v === trim(ia_config_padrao()[$k] ?? '') ? '' : mb_substr($v, 0, 1500));
         }
@@ -100,6 +101,8 @@ require __DIR__ . '/inc/topo.php';
     <label class="l2">WhatsApp da vinícola (botão do cartão das campanhas)<input name="whatsapp_vinicola" maxlength="20" placeholder="61999990000" value="<?= e(config('whatsapp_vinicola', '')) ?>"></label>
     <label class="l2">Link de avaliação no Google ({link_avaliacao})<input name="link_avaliacao" maxlength="300" placeholder="https://g.page/r/..." value="<?= e(config('link_avaliacao', '')) ?>"></label>
     <?php foreach ($msgs as $k => $rot): ?><label class="l2"><?= e($rot) ?><textarea name="<?= $k ?>" rows="4"><?= e(config($k)) ?></textarea></label><?php endforeach; ?>
+    <label class="check l4"><input type="checkbox" name="wa_optout_ligado" <?= config('wa_optout_ligado', '1') === '1' ? 'checked' : '' ?>> Acrescentar a linha de descadastro no fim das mensagens de marketing (campanhas, aniversário, recompra, segunda compra e convite do clube)</label>
+    <label class="l4">Linha de descadastro<input name="wa_optout" maxlength="200" value="<?= e(config('wa_optout')) ?>"><span class="sub">Quem responder N no WhatsApp da vinícola deve ser registrado em Sugestões da IA › Registrar “N” (ou na ficha do cliente: “Aceita WhatsApp” = Não). Mensagens de tour (confirmação, boas-vindas, agradecimento) não levam essa linha.</span></label>
     <div class="l4 acoes"><button>Salvar mensagens</button></div>
   </form>
 </div>

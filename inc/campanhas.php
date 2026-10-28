@@ -74,6 +74,7 @@ function camp_texto($c, $cli) {
     $pj = ($cli['tipo_pessoa'] ?? 'PF') === 'PJ';
     $t = strtr((string)$c['texto'], ['{nome}' => nome_saudacao($cli['nome'], $pj ? 'PJ' : 'PF'), '{nome_completo}' => $pj ? trim($cli['nome']) : nome_proprio($cli['nome']), '{cidade}' => (string)($cli['cidade'] ?? '')]);
     if ($c['cartao']) $t = rtrim($t) . "\n\n" . camp_link_cartao($c);
+    if (camp_canal($c) === 'whatsapp' && function_exists('wa_optout')) $t = wa_optout($t);
     return trim($t);
 }
 
