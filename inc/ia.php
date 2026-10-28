@@ -161,7 +161,7 @@ function ia_gerar_alertas($forcar = false) {
     $ultima = config('ia_ultima_regra', '');
     // Última alteração relevante na auditoria (pelo id, para não depender do fuso do MySQL): se houve algo depois da última rodada, refaz já.
     $aud = 0;
-    try { $aud = (int)db()->query("SELECT MAX(id) FROM auditoria WHERE entidade IN ('cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha')")->fetchColumn(); } catch (Throwable $ex) {}
+    try { $aud = (int)db()->query("SELECT MAX(id) FROM auditoria WHERE entidade IN ('cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha', 'grupo')")->fetchColumn(); } catch (Throwable $ex) {}
     if (!$forcar && $ultima && strtotime($ultima) > time() - 3600 && $aud <= (int)config('ia_ultima_auditoria', '0') && config('ia_versao', '') === APP_VERSAO) return [];
     @set_time_limit(120);
     $erros = [];

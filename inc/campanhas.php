@@ -69,6 +69,27 @@ function camp_contagem($c) {
     return ['pendentes' => count($p['fila']), 'enviados' => $env, 'falhas' => $fal, 'pulados' => count($p['feitos']) - $env - $fal, 'total' => count($p['fila']) + count($p['feitos']),
         'aberturas' => count(array_filter($p['feitos'], fn($x) => !empty($x['aberto_em']))), 'cliques' => count(array_filter($p['feitos'], fn($x) => !empty($x['clicado_em'])))] + $p;
 }
+// Por que uma campanha não aparece em Sugestões da IA › Alertas e sugestões (null = aparece). Mostrado na aba da campanha e ao liberar.
+function camp_por_que_nao_aparece($c) {
+    if (!$c) return null;
+    $hoje = date('Y-m-d'); $email = camp_canal($c) === 'email';
+    if ($c['status'] === 'rascunho') return 'Ainda é rascunho: clique em "Salvar e liberar para envio".';
+    if ($c['status'] === 'encerrada' || ($c['fim'] && $c['fim'] < $hoje)) return 'A campanha está encerrada (a data de encerramento já passou).';
+    if ($c['inicio'] && $c['inicio'] > $hoje) return 'Só aparece a partir de ' . data_br($c['inicio']) . ' (data de início).';
+    $n = camp_contagem($c);
+    if (!$n['pendentes']) {
+        if (!$n['total'] && !$n['sem_celular'] && !($n['sem_email'] ?? 0) && !$n['recusaram'] && !$n['sem_optin']) return 'O grupo não tem membros. Recalcule o grupo (regras) ou inclua os clientes na aba Membros.';
+        if ($n['feitos']) return 'Todos os clientes que podem receber já foram atendidos (' . $n['enviados'] . ' enviado(s), ' . $n['pulados'] . ' pulado(s)).';
+        $m = [];
+        if ($email ? ($n['sem_email'] ?? 0) : $n['sem_celular']) $m[] = ($email ? $n['sem_email'] . ' sem e-mail válido' : $n['sem_celular'] . ' sem celular válido (precisa ser celular com DDD e o 9)');
+        if ($n['recusaram']) $m[] = $n['recusaram'] . ' recusaram ' . ($email ? 'e-mail' : 'WhatsApp') . ' de marketing';
+        if ($c['so_optin'] && $n['sem_optin']) $m[] = $n['sem_optin'] . ' sem autorização (está marcado "Só quem autorizou"; desmarque para testar)';
+        return 'Ninguém do grupo pode receber' . ($m ? ': ' . implode('; ', $m) : '') . '.';
+    }
+    if (function_exists('ia_areas_do_usuario') && !in_array($c['area'], ia_areas_do_usuario(), true))
+        return 'Ela aparece na área ' . (ia_areas()[$c['area']] ?? $c['area']) . ' ("Quem dispara"), que o seu perfil não vê. Quem tem essa área vê o alerta.';
+    return null;
+}
 // Texto final para um cliente: troca as variáveis e acrescenta o link do cartão (quando ligado).
 function camp_texto($c, $cli) {
     $pj = ($cli['tipo_pessoa'] ?? 'PF') === 'PJ';

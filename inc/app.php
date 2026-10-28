@@ -2,7 +2,7 @@
 define('INICIO_PAGINA', microtime(true));
 require __DIR__ . '/config.php';
 define('APP_NOME', 'Gestão Vinícola Brasília');
-define('APP_VERSAO', '9.7');
+define('APP_VERSAO', '9.8');
 define('DIR_COMPROVANTES', dirname(__DIR__) . '/uploads/comprovantes');
 date_default_timezone_set('America/Sao_Paulo');
 
@@ -200,7 +200,7 @@ function registrar_log($entidade, $id, $operacao, $detalhes = '', $quem = null) 
     $u = $quem ?: ($GLOBALS['USUARIO'] ?? null);
     db()->prepare('INSERT INTO auditoria (usuario_id, usuario_nome, entidade, entidade_id, operacao, detalhes) VALUES (?,?,?,?,?,?)')
         ->execute([$u['id'] ?? null, $u['nome'] ?? '—', $entidade, (int)$id, $operacao, mb_substr((string)$detalhes, 0, 2000)]);
-    if (in_array($entidade, ['cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha'], true) && function_exists('ia_marcar_desatualizado')) ia_marcar_desatualizado();
+    if (in_array($entidade, ['cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha', 'grupo'], true) && function_exists('ia_marcar_desatualizado')) ia_marcar_desatualizado();
 }
 function valor_legivel($campo, $v) {
     if (($campo === 'aceita_whatsapp' || $campo === 'aceita_email') && ($v === null || $v === '')) return 'Não perguntado';

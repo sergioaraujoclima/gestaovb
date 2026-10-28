@@ -15,6 +15,7 @@ if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = emai
   <div class="ficha-topo"><strong>E-mail da campanha</strong>
     <?php if ($campE): ?><span class="tag <?= $campE['status'] === 'liberada' ? 'ok' : 'neutra' ?>"><?= e(nome_status_campanha($campE['status'])) ?></span><?php endif; ?>
   </div>
+  <?php if ($campE && ($pq = camp_por_que_nao_aparece($campE))): ?><p class="aviso erro">Não aparece em Alertas e sugestões: <?= e($pq) ?></p><?php elseif ($campE && $campE['status'] === 'liberada'): ?><p class="aviso">Aparece em <a href="ia.php">Sugestões da IA › Alertas e sugestões</a> com <?= (int)$ce['pendentes'] ?> cliente(s) para enviar.</p><?php endif; ?>
   <?php if ($ce): ?>
   <div class="cards">
     <div class="card"><span>Enviados</span><strong><?= $ce['enviados'] ?></strong><small><?= $ce['pendentes'] ?> na fila</small></div>

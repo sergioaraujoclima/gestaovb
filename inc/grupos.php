@@ -201,6 +201,7 @@ function grupos_recalcular($g, $ctx = null) {
         $pdo->exec("DELETE FROM crm_grupo_membros WHERE grupo_id = $gid AND origem = 'regra' AND cliente_id IN (" . implode(',', array_map('intval', $lote)) . ')');
     $pdo->prepare('UPDATE crm_grupos SET recalculado_em = ? WHERE id = ?')->execute([$agora, $gid]);
     $pdo->commit();
+    if ($entram || $saem) grupos_mudou();
     return [count($entram), count($saem)];
 }
 // Clientes pessoa física sem sexo (cadastros antigos e cargas sem essa coluna): presume pelo primeiro nome e marca como presumido.
@@ -278,6 +279,7 @@ function grupos_incluir_manual($grupoId, $clienteId) {
     if ($o === 'manual' || $o === 'regra') return false;
     if ($o === 'excluido') $pdo->prepare("UPDATE crm_grupo_membros SET origem = 'manual', incluido_em = ?, incluido_por = ? WHERE grupo_id = ? AND cliente_id = ?")->execute([date('Y-m-d H:i:s'), $quem, $grupoId, $clienteId]);
     else $pdo->prepare("INSERT INTO crm_grupo_membros (grupo_id, cliente_id, origem, incluido_em, incluido_por) VALUES (?, ?, 'manual', ?, ?)")->execute([$grupoId, $clienteId, date('Y-m-d H:i:s'), $quem]);
+    grupos_mudou();
     return true;
 }
 function grupos_remover_manual($grupoId, $clienteId) {
@@ -291,11 +293,15 @@ function grupos_remover_manual($grupoId, $clienteId) {
     } else {
         $pdo->prepare('DELETE FROM crm_grupo_membros WHERE grupo_id = ? AND cliente_id = ?')->execute([$grupoId, $clienteId]);
     }
+    grupos_mudou();
 }
+// Membros mudaram: a fila das campanhas muda, então os alertas são refeitos na próxima vez que alguém abrir Sugestões da IA.
+function grupos_mudou() { if (function_exists('ia_marcar_desatualizado')) ia_marcar_desatualizado(); }
 // Desfaz uma exclusão: o cliente volta a seguir a regra.
 function grupos_reincluir($grupoId, $clienteId) {
     db()->prepare("DELETE FROM crm_grupo_membros WHERE grupo_id = ? AND cliente_id = ? AND origem = 'excluido'")->execute([$grupoId, $clienteId]);
     grupos_recalcular_cliente($clienteId);
+    grupos_mudou();
 }
 // Contagens por grupo, para a lista e para planejar campanhas.
 function grupos_contagens() {
