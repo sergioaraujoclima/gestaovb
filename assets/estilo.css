@@ -339,3 +339,26 @@ button.link{background:none;border:0;color:var(--vinho2);text-decoration:underli
 @media(max-width:760px){.wa-editor,.disp-grade{grid-template-columns:1fr}}
 .wa-tela .wa-bolha+.wa-bolha{margin-top:8px}
 .wa-editor [hidden],.wa-tela [hidden]{display:none!important}
+/* v10 · campanhas por e-mail */
+.abas-grupo{margin:4px 0 14px}
+.campanha.email{border-left-color:#2f7fc4}
+.rot-editor{display:block;font-size:13px;color:#544;margin:12px 0 4px}
+.em-editor{border:1px solid #cfc6bc;border-radius:8px;background:#fff;margin-bottom:12px}
+.em-barra{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px;border-bottom:1px solid var(--borda);background:#faf8f5;border-radius:8px 8px 0 0;position:sticky;top:0;z-index:2}
+.em-barra button{background:#fff;color:var(--txt);border:1px solid #cfc6bc;padding:4px 9px;font-size:13px;min-width:30px}
+.em-barra button:hover{background:#f3eee8}
+.em-barra select{width:auto;padding:4px 6px;font-size:13px}
+.em-barra .sep{width:1px;height:22px;background:var(--borda);margin:0 2px}
+.em-barra label.cor{flex-direction:row;align-items:center;gap:2px;border:1px solid #cfc6bc;border-radius:6px;padding:0 4px;background:#fff;font-weight:700;color:#5c1a2b;font-size:14px}
+.em-barra label.cor input{width:26px;height:24px;padding:0;border:0;background:none}
+.em-emojis{padding:6px;border-bottom:1px solid var(--borda)}
+.em-emojis button{background:none;border:0;font-size:22px;padding:2px 4px;color:inherit}
+.em-area{min-height:260px;max-height:640px;overflow:auto;padding:18px 22px;font:16px/1.6 Arial,Helvetica,sans-serif;color:#2a2326;outline:none}
+.em-area img{max-width:100%;height:auto}
+.em-area blockquote{border-left:3px solid #d98a1c;margin:10px 0;padding:4px 12px;color:#544}
+.em-fonte{width:100%;min-height:260px;border:0;border-radius:0 0 8px 8px;font:13px ui-monospace,Consolas,monospace;padding:12px}
+.em-editor [hidden]{display:none!important}
+.em-previa{width:100%;height:640px;border:1px solid var(--borda);border-radius:8px;background:#f6f3ef}
+.em-resumo{display:flex;flex-direction:column;gap:3px;font-size:14px}
+[hidden]{display:none!important}
+input[type=color]{height:40px;padding:3px;cursor:pointer}

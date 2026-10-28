@@ -5,6 +5,7 @@ require __DIR__ . '/inc/app.php';
 exigir_login();
 if (!camp_v11()) { flash('Rode a migração v11 para usar as campanhas.', 'erro'); ir(pagina_inicial()); }
 $c = camp_por_id($_GET['c'] ?? $_POST['c'] ?? 0);
+if ($c && camp_canal($c) === 'email') ir('ia_email.php?c=' . (int)$c['id']);
 $pode = $c && ((pode_ver_ia() && in_array($c['area'], ia_areas_do_usuario(), true)) || pode_gerir_grupos());
 if (!$pode) negar();
 $pdo = db(); $quem = $GLOBALS['USUARIO']['nome'];

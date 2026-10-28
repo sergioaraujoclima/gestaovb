@@ -388,10 +388,13 @@ function ia_r_campanhas() {
         if ($c['inicio'] && $c['inicio'] > $hoje) continue;
         $n = camp_contagem($c);
         if (!$n['pendentes']) continue;
+        $email = camp_canal($c) === 'email';
         ia_cartao(['chave' => 'campanha:' . $c['id'] . ':' . $hoje, 'area' => $c['area'], 'tipo' => 'campanha', 'prioridade' => 'media',
-            'titulo' => 'Campanha "' . $c['titulo'] . '": ' . $n['pendentes'] . ' cliente(s) para enviar',
-            'texto' => 'Grupo ' . $c['grupo_nome'] . ($c['fim'] ? ' · até ' . data_br($c['fim']) : '') . '. Abra a fila de envio: o sistema abre cada conversa com a mensagem pronta e já deixa o próximo cliente pronto.',
-            'dados' => ['campanha_id' => (int)$c['id']], 'link' => 'ia_disparo.php?c=' . $c['id'], 'valido_ate' => $hoje]);
+            'titulo' => ($email ? 'E-mail "' : 'WhatsApp "') . $c['titulo'] . '": ' . $n['pendentes'] . ' cliente(s) para enviar',
+            'texto' => 'Grupo ' . $c['grupo_nome'] . ($c['fim'] ? ' · até ' . data_br($c['fim']) : '') . '. ' . ($email
+                ? ($c['auto_envio'] ? 'O envio automático está ligado: os lotes saem sozinhos dentro do limite por hora; acompanhe aberturas e cliques.' : 'Abra o envio: os e-mails saem em lotes, dentro do limite por hora da hospedagem.')
+                : 'Abra a fila de envio: o sistema abre cada conversa com a mensagem pronta e já deixa o próximo cliente pronto.'),
+            'dados' => ['campanha_id' => (int)$c['id']], 'link' => ($email ? 'ia_email.php?c=' : 'ia_disparo.php?c=') . $c['id'], 'valido_ate' => $hoje]);
     }
 }
 

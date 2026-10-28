@@ -16,8 +16,20 @@ function camp_v11() {
 }
 function nome_status_campanha($s) { return ['rascunho' => 'Rascunho', 'liberada' => 'Liberada para envio', 'encerrada' => 'Encerrada'][$s] ?? $s; }
 function camp_por_id($id) { $s = db()->prepare('SELECT c.*, g.nome grupo_nome FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.id = ?'); $s->execute([(int)$id]); return $s->fetch() ?: null; }
-function camp_do_grupo($gid) {
-    $s = db()->prepare("SELECT * FROM crm_campanhas WHERE grupo_id = ? AND status <> 'encerrada' ORDER BY id DESC LIMIT 1"); $s->execute([(int)$gid]);
+// Migração v12: canal (WhatsApp ou e-mail), campos do e-mail, falhas, aberturas e cliques.
+function camp_v12() {
+    static $ok = null;
+    if ($ok === null) {
+        try { db()->query('SELECT c.canal, c.html, c.auto_envio FROM crm_campanhas c WHERE 1 = 0'); db()->query('SELECT e.aberto_em, e.erro FROM crm_campanha_envios e WHERE 1 = 0'); $ok = true; }
+        catch (Throwable $ex) { $ok = false; }
+    }
+    return $ok;
+}
+function camp_canal($c) { return $c['canal'] ?? 'whatsapp'; }
+function camp_do_grupo($gid, $canal = 'whatsapp') {
+    if (!camp_v12() && $canal !== 'whatsapp') return null;
+    $s = db()->prepare("SELECT * FROM crm_campanhas WHERE grupo_id = ? AND status <> 'encerrada'" . (camp_v12() ? ' AND canal = ?' : '') . ' ORDER BY id DESC LIMIT 1');
+    $s->execute(camp_v12() ? [(int)$gid, $canal] : [(int)$gid]);
     return $s->fetch() ?: null;
 }
 function camp_token() { return substr(str_replace(['+', '/', '='], '', base64_encode(random_bytes(9))), 0, 10); }
@@ -35,6 +47,7 @@ function camp_url_imagem($c) { return $c['imagem'] ? url_base() . '/c.php?k=' . 
 
 // Destinatários: membros do grupo com celular válido, sem quem recusou WhatsApp (e, se marcado, só quem autorizou).
 function camp_publico($c) {
+    if (camp_canal($c) === 'email') return camp_publico_email($c);
     $s = db()->prepare("SELECT cl.id, cl.nome, cl.tipo_pessoa, cl.telefone, cl.telefone_e164, cl.cidade, cl.aceita_whatsapp, e.situacao, e.em, e.por
         FROM crm_grupo_membros m JOIN clientes cl ON cl.id = m.cliente_id LEFT JOIN crm_campanha_envios e ON e.campanha_id = ? AND e.cliente_id = cl.id
         WHERE m.grupo_id = ? AND m.origem <> 'excluido' ORDER BY cl.nome");
@@ -52,7 +65,9 @@ function camp_publico($c) {
 function camp_contagem($c) {
     $p = camp_publico($c);
     $env = count(array_filter($p['feitos'], fn($x) => $x['situacao'] === 'enviado'));
-    return ['pendentes' => count($p['fila']), 'enviados' => $env, 'pulados' => count($p['feitos']) - $env, 'total' => count($p['fila']) + count($p['feitos'])] + $p;
+    $fal = count(array_filter($p['feitos'], fn($x) => $x['situacao'] === 'falhou'));
+    return ['pendentes' => count($p['fila']), 'enviados' => $env, 'falhas' => $fal, 'pulados' => count($p['feitos']) - $env - $fal, 'total' => count($p['fila']) + count($p['feitos']),
+        'aberturas' => count(array_filter($p['feitos'], fn($x) => !empty($x['aberto_em']))), 'cliques' => count(array_filter($p['feitos'], fn($x) => !empty($x['clicado_em'])))] + $p;
 }
 // Texto final para um cliente: troca as variáveis e acrescenta o link do cartão (quando ligado).
 function camp_texto($c, $cli) {
@@ -196,3 +211,5 @@ function camp_vcard($nome, $tel, $grupo) {
     $esc = fn($s) => str_replace([',', ';', "\n"], ['\,', '\;', ' '], (string)$s);
     return "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:" . $esc($nome) . "\r\nN:" . $esc($nome) . ";;;;\r\nTEL;TYPE=CELL:" . $tel . "\r\nNOTE:" . $esc('Vinícola Brasília · ' . $grupo) . "\r\nEND:VCARD\r\n";
 }
+
+require_once __DIR__ . '/email_camp.php';

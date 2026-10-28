@@ -8,8 +8,10 @@ if ($k !== '' && camp_v11()) {
     $s = db()->prepare('SELECT c.*, g.nome grupo_nome FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.token = ?');
     $s->execute([$k]); $c = $s->fetch() ?: null;
 }
-if (isset($_GET['img'])) {
-    $arq = $c && $c['imagem'] ? DIR_CAMPANHAS . '/' . basename($c['imagem']) : '';
+if (isset($_GET['img']) || isset($_GET['f'])) {
+    // img = imagem principal; f = imagem inserida no texto do e-mail (sempre um arquivo desta campanha).
+    $f = basename((string)($_GET['f'] ?? ''));
+    $arq = !$c ? '' : (isset($_GET['f']) ? (preg_match('/^' . (int)$c['id'] . '-[a-f0-9]{12}\.jpg$/', $f) ? DIR_CAMPANHAS . '/' . $f : '') : ($c['imagem'] ? DIR_CAMPANHAS . '/' . basename($c['imagem']) : ''));
     if (!$arq || !is_file($arq)) { http_response_code(404); exit; }
     header('Content-Type: image/jpeg');
     header('Content-Length: ' . filesize($arq));

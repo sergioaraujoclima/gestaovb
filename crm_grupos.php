@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
     $gid = (int)($_POST['grupo_id'] ?? 0);
     $g = $gid ? $pdo->query('SELECT * FROM crm_grupos WHERE id = ' . $gid)->fetch() : null;
-    $volta = 'crm_grupos.php' . ($gid ? '?ver=' . $gid : '');
+    $volta = 'crm_grupos.php' . ($gid ? '?ver=' . $gid . '&aba=membros' : '');
 
     if (in_array($acao, ['membro_remover', 'membro_reincluir', 'membro_incluir'], true)) {
         if (!pode_editar_clientes()) negar();
@@ -29,11 +29,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ---------- Mensagem da campanha ----------
     if (strpos($acao, 'camp_') === 0) {
         if (!$g || !camp_v11()) { flash('Grupo não encontrado ou migração v11 pendente.', 'erro'); ir('crm_grupos.php'); }
-        $volta = 'crm_grupos.php?ver=' . $gid . '#campanha';
+        $canal = ($_POST['canal'] ?? '') === 'email' && camp_v12() ? 'email' : 'whatsapp';
+        $volta = 'crm_grupos.php?ver=' . $gid . '&aba=' . $canal . '#campanha';
         $cid = (int)($_POST['campanha_id'] ?? 0);
         $camp = $cid ? camp_por_id($cid) : null;
         if ($camp && (int)$camp['grupo_id'] !== $gid) negar();
+        if ($camp) $canal = camp_canal($camp);
         $agora = date('Y-m-d H:i:s'); $quem = $GLOBALS['USUARIO']['nome'];
+        // Imagem inserida no texto do e-mail (chamada pelo editor, sem recarregar a página).
+        if ($acao === 'camp_img_corpo') {
+            header('Content-Type: application/json; charset=utf-8');
+            if (!$camp) { echo json_encode(['ok' => false, 'erro' => 'Salve o rascunho antes de inserir imagens.']); exit; }
+            try { $nomeImg = camp_salvar_imagem($_FILES['imagem'] ?? null, $cid); }
+            catch (Throwable $ex) { echo json_encode(['ok' => false, 'erro' => $ex->getMessage()], JSON_UNESCAPED_UNICODE); exit; }
+            echo json_encode(['ok' => (bool)$nomeImg, 'url' => url_base() . '/c.php?k=' . rawurlencode($camp['token']) . '&f=' . rawurlencode((string)$nomeImg)]); exit;
+        }
+        if ($acao === 'camp_teste_email' && $camp) {
+            $para = (string)$GLOBALS['USUARIO']['email'];
+            try {
+                [$as, $html, $txt] = email_montar($camp, ['id' => 0, 'nome' => $quem, 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília'], false);
+                $ok = email_enviar_campanha($camp, $para, '[TESTE] ' . $as, $html, $txt);
+                flash($ok ? 'E-mail de teste enviado para ' . $para . '. Confira também a caixa de spam.' : 'O servidor não aceitou o envio do teste.', $ok ? 'ok' : 'erro');
+            } catch (Throwable $ex) { flash('Teste não enviado: ' . $ex->getMessage(), 'erro'); }
+            ir($volta);
+        }
+        if ($acao === 'camp_reenviar_falhas' && $camp) {
+            $n = $pdo->prepare("DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND situacao = 'falhou'"); $n->execute([$cid]);
+            flash($n->rowCount() . ' e-mail(s) com falha voltaram para a fila.'); ir($volta);
+        }
         if ($acao === 'camp_encerrar' && $camp) {
             $pdo->prepare("UPDATE crm_campanhas SET status = 'encerrada', atualizado_em = ? WHERE id = ?")->execute([$agora, $cid]);
             $pdo->prepare("UPDATE ia_cartoes SET status = 'feita', resolvido_por = ?, resolvido_em = ?, comentario = COALESCE(comentario, 'Campanha encerrada') WHERE chave LIKE ? AND status IN ('nova', 'andamento')")->execute([$quem, $agora, 'campanha:' . $cid . ':%']);
@@ -44,6 +67,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             camp_apagar_imagem($camp['imagem']);
             $pdo->prepare('UPDATE crm_campanhas SET imagem = NULL, atualizado_em = ? WHERE id = ?')->execute([$agora, $cid]);
             flash('Imagem removida.'); ir($volta);
+        }
+        if (($acao === 'camp_salvar' || $acao === 'camp_liberar') && $canal === 'email') {
+            $d = ['titulo' => mb_substr(texto_limpo($_POST['titulo'] ?? ''), 0, 120) ?: $g['nome'],
+                'assunto' => mb_substr(texto_limpo($_POST['assunto'] ?? ''), 0, 200),
+                'preheader' => vazio_null(mb_substr(texto_limpo($_POST['preheader'] ?? ''), 0, 200)),
+                'html' => mb_substr(email_sanitizar($_POST['html'] ?? ''), 0, 200000),
+                'botao_texto' => vazio_null(mb_substr(texto_limpo($_POST['botao_texto'] ?? ''), 0, 80)),
+                'botao_link' => preg_match('~^https?://~i', trim($_POST['botao_link'] ?? '')) ? mb_substr(trim($_POST['botao_link']), 0, 300) : null,
+                'remetente' => vazio_null(mb_substr(texto_limpo($_POST['remetente'] ?? ''), 0, 80)),
+                'cor' => preg_match('/^#[0-9a-f]{6}$/i', $_POST['cor'] ?? '') ? $_POST['cor'] : '#5c1a2b',
+                'area' => in_array($_POST['area'] ?? '', ['b2b', 'b2c', 'enoturismo'], true) ? $_POST['area'] : 'b2c',
+                'so_optin' => isset($_POST['so_optin']) ? 1 : 0, 'auto_envio' => isset($_POST['auto_envio']) ? 1 : 0,
+                'inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['inicio'] ?? '') ? $_POST['inicio'] : date('Y-m-d'),
+                'fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['fim'] ?? '') ? $_POST['fim'] : null];
+            if ($acao === 'camp_liberar' && ($d['assunto'] === '' || trim(strip_tags($d['html'])) === '')) { flash('Preencha o assunto e o texto do e-mail antes de liberar.', 'erro'); ir($volta); }
+            if ($d['fim'] && $d['fim'] < $d['inicio']) $d['fim'] = null;
+            try {
+                if (!$camp) {
+                    $pdo->prepare("INSERT INTO crm_campanhas (grupo_id, canal, titulo, token, criado_por, criado_em) VALUES (?, 'email', ?,?,?,?)")->execute([$gid, $d['titulo'], camp_token(), $quem, $agora]);
+                    $cid = (int)$pdo->lastInsertId(); $camp = camp_por_id($cid);
+                    registrar_log('campanha', $cid, 'Campanha de e-mail criada', $d['titulo'] . ' · grupo ' . $g['nome']);
+                }
+                $img = camp_salvar_imagem($_FILES['imagem'] ?? null, $cid);
+                if ($img) { camp_apagar_imagem($camp['imagem']); $d['imagem'] = $img; }
+                $d['atualizado_em'] = $agora;
+                if ($acao === 'camp_liberar') { $d['status'] = 'liberada'; if ($camp['status'] !== 'liberada') { $d['liberada_por'] = $quem; $d['liberada_em'] = $agora; } }
+                $pdo->prepare('UPDATE crm_campanhas SET ' . implode(' = ?, ', array_keys($d)) . ' = ? WHERE id = ?')->execute(array_merge(array_values($d), [$cid]));
+            } catch (Throwable $ex) { flash('O e-mail não foi salvo: ' . $ex->getMessage(), 'erro'); ir($volta); }
+            registrar_log('campanha', $cid, $acao === 'camp_liberar' ? 'Campanha de e-mail liberada para envio' : 'E-mail da campanha salvo', $d['titulo'] . ' · assunto: ' . $d['assunto']);
+            if ($acao === 'camp_liberar' && function_exists('ia_gerar_alertas')) ia_gerar_alertas(true);
+            flash($acao === 'camp_liberar' ? 'E-mail liberado. O envio aparece em Sugestões da IA › Alertas e sugestões' . ($d['auto_envio'] ? ' e também sai sozinho, em lotes, pelo agendamento' : '') . '.' : 'E-mail salvo como rascunho.');
+            ir($volta);
         }
         if ($acao === 'camp_salvar' || $acao === 'camp_liberar') {
             $d = ['titulo' => mb_substr(texto_limpo($_POST['titulo'] ?? ''), 0, 120) ?: $g['nome'],
@@ -60,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($d['fim'] && $d['fim'] < $d['inicio']) $d['fim'] = null;
             try {
                 if (!$camp) {
-                    $pdo->prepare('INSERT INTO crm_campanhas (grupo_id, titulo, token, criado_por, criado_em) VALUES (?,?,?,?,?)')->execute([$gid, $d['titulo'], camp_token(), $quem, $agora]);
+                    $pdo->prepare('INSERT INTO crm_campanhas (grupo_id, titulo, token, criado_por, criado_em) VALUES (?,?,?,?,?)')->execute([$gid, $d['titulo'], camp_token(), $quem, $agora]);   // canal padrão: whatsapp
                     $cid = (int)$pdo->lastInsertId(); $camp = camp_por_id($cid);
                     registrar_log('campanha', $cid, 'Campanha criada', $d['titulo'] . ' · grupo ' . $g['nome']);
                 }
@@ -274,7 +329,8 @@ if (pode_editar_clientes() && ($b = trim($_GET['buscar'] ?? '')) !== '') {
     $s = $pdo->prepare("SELECT id, nome, telefone FROM clientes WHERE (nome LIKE ? OR telefone LIKE ? OR email LIKE ?) AND id NOT IN (SELECT cliente_id FROM crm_grupo_membros WHERE grupo_id = ? AND origem <> 'excluido') ORDER BY nome LIMIT 20");
     $s->execute(["%$b%", "%$b%", "%$b%", $ver['id']]); $candidatos = $s->fetchAll();
 }
-$qsBase = 'ver=' . (int)$ver['id'];
+$qsBase = 'ver=' . (int)$ver['id'] . '&aba=membros';
+$aba = in_array($_GET['aba'] ?? '', ['whatsapp', 'email', 'membros'], true) ? $_GET['aba'] : (isset($_GET['q']) || isset($_GET['origem']) || isset($_GET['buscar']) || isset($_GET['p']) ? 'membros' : 'whatsapp');
 ?>
 <div class="ficha-topo">
   <strong><?= e($ver['nome']) ?></strong>
@@ -287,10 +343,14 @@ $qsBase = 'ver=' . (int)$ver['id'];
   <div class="card"><span>Com celular</span><strong><?= (int)$k['celular'] ?></strong></div>
   <div class="card"><span>Aceitaram WhatsApp</span><strong><?= (int)$k['optin_wa'] ?></strong></div>
   <div class="card"><span>Com e-mail</span><strong><?= (int)$k['email'] ?></strong></div>
+  <div class="card"><span>Aceitaram e-mail</span><strong><?= (int)$k['optin_email'] ?></strong></div>
   <div class="card alerta"><span>Recusaram WhatsApp</span><strong><?= (int)$k['recusa_wa'] ?></strong></div>
 </div>
-<?php if (camp_v11()): $camp = camp_do_grupo($ver['id']); $cc = $camp ? camp_contagem($camp) : null; $podeCamp = pode_gerir_grupos();
-  $hist = $pdo->query("SELECT * FROM crm_campanhas WHERE grupo_id = " . (int)$ver['id'] . " AND status = 'encerrada' ORDER BY id DESC LIMIT 10")->fetchAll();
+<nav class="abas abas-grupo">
+  <?php foreach (['whatsapp' => '💬 Mensagem de WhatsApp', 'email' => '✉️ E-mail', 'membros' => '👥 Membros (' . (int)$k['total'] . ')'] as $ka => $ra): ?><a href="crm_grupos.php?ver=<?= (int)$ver['id'] ?>&aba=<?= $ka ?>" class="<?= $aba === $ka ? 'ativa' : '' ?>"><?= e($ra) ?></a><?php endforeach; ?>
+</nav>
+<?php if ($aba === 'whatsapp' && camp_v11()): $camp = camp_do_grupo($ver['id']); $cc = $camp ? camp_contagem($camp) : null; $podeCamp = pode_gerir_grupos();
+  $hist = $pdo->query("SELECT * FROM crm_campanhas WHERE grupo_id = " . (int)$ver['id'] . " AND status = 'encerrada'" . (camp_v12() ? " AND canal = 'whatsapp'" : '') . " ORDER BY id DESC LIMIT 10")->fetchAll();
   $nome1 = nome_saudacao($GLOBALS['USUARIO']['nome']); ?>
 <section class="cartao campanha" id="campanha">
   <div class="ficha-topo"><strong>Mensagem da campanha</strong>
@@ -345,8 +405,10 @@ $qsBase = 'ver=' . (int)$ver['id'];
     <?php endforeach; ?></tbody></table></div>
   <?php endif; ?>
 </section>
+<?php elseif ($aba === 'whatsapp'): ?><div class="aviso erro">Rode a migração v11 para configurar a mensagem de WhatsApp.</div>
 <?php endif; ?>
-
+<?php if ($aba === 'email') require __DIR__ . '/inc/grupo_email.php'; ?>
+<?php if ($aba === 'membros'): ?>
 <div class="barra-lista">
   <?php if (pode_gerir_grupos()): ?>
     <a class="btn peq" href="crm_grupos.php?editar=<?= (int)$ver['id'] ?>">Editar regras do grupo</a>
@@ -361,7 +423,7 @@ $qsBase = 'ver=' . (int)$ver['id'];
 <p class="sub">As exportações por canal já tiram quem recusou aquele canal e quem não tem celular ou e-mail válido.</p>
 
 <form method="get" class="filtro">
-  <input type="hidden" name="ver" value="<?= (int)$ver['id'] ?>">
+  <input type="hidden" name="ver" value="<?= (int)$ver['id'] ?>"><input type="hidden" name="aba" value="membros">
   <input name="q" placeholder="Buscar membro" value="<?= e($q) ?>">
   <select name="origem" style="width:auto"><option value="">Membros atuais</option><option value="regra" <?= $fo === 'regra' ? 'selected' : '' ?>>Entraram pela regra</option><option value="manual" <?= $fo === 'manual' ? 'selected' : '' ?>>Incluídos à mão</option><option value="excluido" <?= $fo === 'excluido' ? 'selected' : '' ?>>Excluídos à mão (<?= $nExcl ?>)</option></select>
   <button>Filtrar</button>
@@ -370,7 +432,7 @@ $qsBase = 'ver=' . (int)$ver['id'];
 <?php if (pode_editar_clientes()): ?>
 <details class="cartao" <?= $candidatos || isset($_GET['buscar']) ? 'open' : '' ?>>
   <summary>Incluir cliente à mão</summary>
-  <form method="get" class="filtro"><input type="hidden" name="ver" value="<?= (int)$ver['id'] ?>"><input name="buscar" placeholder="Nome, telefone ou e-mail" value="<?= e($_GET['buscar'] ?? '') ?>"><button>Buscar</button></form>
+  <form method="get" class="filtro"><input type="hidden" name="ver" value="<?= (int)$ver['id'] ?>"><input type="hidden" name="aba" value="membros"><input name="buscar" placeholder="Nome, telefone ou e-mail" value="<?= e($_GET['buscar'] ?? '') ?>"><button>Buscar</button></form>
   <?php foreach ($candidatos as $c): ?>
     <form method="post" class="acoes linha-cand"><?= csrf_campo() ?><input type="hidden" name="grupo_id" value="<?= (int)$ver['id'] ?>"><input type="hidden" name="cliente_id" value="<?= (int)$c['id'] ?>">
       <span><?= e($c['nome']) ?> <span class="sub"><?= e($c['telefone']) ?></span></span><button class="peq" name="acao" value="membro_incluir">Incluir</button></form>
@@ -408,6 +470,7 @@ $qsBase = 'ver=' . (int)$ver['id'];
   <?php if ($pag < $nP): ?><a class="btn peq sec" href="crm_grupos.php?<?= e($qs) ?>&p=<?= $pag + 1 ?>">Próxima ›</a><?php endif; ?>
 </div>
 <?php endif; ?>
+<?php endif; /* aba membros */ ?>
 
 <?php else: ?>
 <p class="sub">Grupos automáticos se mantêm sozinhos: quem passa a atender à regra entra (por exemplo, ao cadastrar uma cliente com sexo feminino, ela entra em Dia das Mães) e quem deixa de atender sai. Grupos manuais são listas escolhidas à mão.</p>

@@ -18,6 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mod = preg_replace('/[^a-z0-9.\-]/', '', strtolower((string)($_POST['ia_modelo'] ?? '')));
         config_salvar('ia_modelo', $mod ?: 'claude-sonnet-5-5');
         config_salvar('ia_emails', isset($_POST['ia_emails']) ? '1' : '0');
+        config_salvar('email_limite_hora', (string)max(10, min(2000, (int)($_POST['email_limite_hora'] ?? 200))));
+        config_salvar('email_lote', (string)max(5, min(100, (int)($_POST['email_lote'] ?? 25))));
+        config_salvar('email_pausa', (string)max(5, min(600, (int)($_POST['email_pausa'] ?? 20))));
+        config_salvar('email_resposta', filter_var(trim($_POST['email_resposta'] ?? ''), FILTER_VALIDATE_EMAIL) ? trim($_POST['email_resposta']) : '');
         registrar_log('ia', 0, 'Configuração da IA', 'modelo ' . config('ia_modelo') . ($k !== '' ? '; chave da API atualizada' : '') . (!empty($_POST['remover_chave']) ? '; chave removida' : '') . '; e-mails ' . (config('ia_emails') === '1' ? 'ligados' : 'desligados'));
         flash('Configuração da IA salva.'); ir('ia_config.php');
     }
@@ -75,6 +79,11 @@ require __DIR__ . '/inc/topo.php';
     <label>Modelo<input name="ia_modelo" value="<?= e(config('ia_modelo')) ?>"></label>
     <label class="check"><input type="checkbox" name="ia_emails" <?= config('ia_emails') === '1' ? 'checked' : '' ?>> Enviar e-mails aos gerentes</label>
     <?php if ($chave): ?><label class="check"><input type="checkbox" name="remover_chave" value="1"> Remover a chave</label><?php endif; ?>
+    <p class="l4 sub" style="margin:8px 0 0"><strong>Campanhas de e-mail</strong> · a hospedagem compartilhada limita quantos e-mails saem por hora; confira o limite do seu plano com a HostGator e deixe uma folga para os e-mails do dia a dia.</p>
+    <label>Limite por hora<input type="number" name="email_limite_hora" min="10" max="2000" value="<?= (int)config('email_limite_hora', '200') ?>"></label>
+    <label>E-mails por lote<input type="number" name="email_lote" min="5" max="100" value="<?= (int)config('email_lote', '25') ?>"></label>
+    <label>Pausa entre lotes (s)<input type="number" name="email_pausa" min="5" max="600" value="<?= (int)config('email_pausa', '20') ?>"></label>
+    <label>Responder para (e-mail)<input type="email" name="email_resposta" placeholder="<?= e(MAIL_DE) ?>" value="<?= e(config('email_resposta', '')) ?>"></label>
     <div class="l4 acoes"><button>Salvar</button></div>
   </form>
   <?php if ($chave): ?><form method="post" class="acoes"><?= csrf_campo() ?><button class="peq sec" name="acao" value="testar">Testar conexão com a IA</button></form><?php endif; ?>
@@ -127,10 +136,11 @@ require __DIR__ . '/inc/topo.php';
 
 <div class="cartao">
   <h2 style="margin-top:0">Tarefas automáticas (cPanel › Tarefas Cron)</h2>
-  <p class="sub">Sem elas, os alertas são atualizados quando alguém abre a tela, mas os e-mails e a análise semanal não saem sozinhos. Cadastre as três linhas:</p>
+  <p class="sub">Sem elas, os alertas são atualizados quando alguém abre a tela, mas os e-mails e a análise semanal não saem sozinhos. Cadastre as linhas abaixo (a última envia, em lotes, as campanhas de e-mail marcadas como "enviar sozinho"):</p>
   <pre class="cron">0 * * * *   php <?= e(__DIR__) ?>/cron_ia.php alertas
 0 7 * * *   php <?= e(__DIR__) ?>/cron_ia.php diario
-30 7 * * 1  php <?= e(__DIR__) ?>/cron_ia.php semanal</pre>
+30 7 * * 1  php <?= e(__DIR__) ?>/cron_ia.php semanal
+*/15 * * * * php <?= e(__DIR__) ?>/cron_ia.php emails</pre>
   <p class="sub">Última atualização dos alertas: <?= config('ia_ultima_regra', '') ? date('d/m/Y H:i', strtotime(config('ia_ultima_regra', ''))) : 'nunca' ?> · último e-mail do dia: <?= config('ia_email_diario_em', '') ? data_br(config('ia_email_diario_em', '')) : 'nunca' ?>.</p>
 </div>
 <script>
