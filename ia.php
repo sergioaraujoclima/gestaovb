@@ -101,9 +101,10 @@ function ia_render_cartao($c, $aba, $tiposMarketing) {
         }
     }
     if ($contatos) {
-        $h .= '<div class="ia-contatos"><div class="ia-prog">' . count($env) . ' de ' . count($contatos) . ' contatados</div><ul>';
+        $h .= '<div class="ia-contatos"><div class="ia-prog">' . count($env) . ' de ' . count($contatos) . ' contatados</div>'
+            . (count($contatos) > 8 ? '<input type="search" class="ia-busca" placeholder="Procurar nesta lista (' . count($contatos) . ' nomes)">' : '') . '<ul>';
         foreach ($contatos as $i => $p) {
-            if ($i === 8) $h .= '</ul><details><summary>Ver mais ' . (count($contatos) - 8) . '</summary><ul>';
+            if ($i === 8) $h .= '</ul><details><summary>Ver os outros ' . (count($contatos) - 8) . '</summary><ul>';
             $h .= '<li><div><a href="clientes.php?editar=' . (int)$p['cliente_id'] . '">' . e($p['nome']) . '</a>' . ($p['detalhe'] ? '<br><small>' . e($p['detalhe']) . '</small>' : '') . '</div><div class="ia-acao" id="ct-' . (int)$c['id'] . '-' . $i . '">';
             if (isset($env[$i])) $h .= '<span class="ok-env">✓ enviado ' . date('d/m H:i', strtotime($env[$i]['em'])) . ' · ' . e($env[$i]['por']) . '</span>';
             if ($p['msg'] !== null) {
@@ -176,6 +177,14 @@ foreach ($secoes as $k => $cs): if (!$cs && $k !== 'hoje') continue; ?>
 <?php if (!$lista): ?><div class="cartao"><p>Nenhum alerta aberto<?= $aba ? ' para ' . e(ia_areas()[$aba]) : '' ?>. Os alertas aparecem sozinhos conforme os tours, as vendas e as datas se aproximam.</p></div><?php endif; ?>
 <p class="sub">Os alertas são revistos de hora em hora. O botão WhatsApp abre a conversa com a mensagem pronta (dá para ajustar antes de enviar) e marca o contato como enviado. Alertas marcados como feitos ou descartados não voltam.</p>
 <script>
+// Busca dentro da lista de contatos de um cartão (abre o "Ver os outros" quando o nome está lá).
+document.querySelectorAll('.ia-busca').forEach(function (inp) {
+  inp.addEventListener('input', function () {
+    var t = inp.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), box = inp.closest('.ia-contatos'), d = box.querySelector('details');
+    box.querySelectorAll('li').forEach(function (li) { li.hidden = t && li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(t) < 0; });
+    if (d && t) d.open = true;
+  });
+});
 document.querySelectorAll('a.wa').forEach(function (a) {
   a.addEventListener('click', function () {
     var f = new FormData(); f.append('csrf', <?= json_encode(csrf_token()) ?>); f.append('acao', 'enviado'); f.append('id', a.dataset.id); f.append('idx', a.dataset.idx);

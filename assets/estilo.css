@@ -362,3 +362,4 @@ button.link{background:none;border:0;color:var(--vinho2);text-decoration:underli
 .em-resumo{display:flex;flex-direction:column;gap:3px;font-size:14px}
 [hidden]{display:none!important}
 input[type=color]{height:40px;padding:3px;cursor:pointer}
+.ia-busca{padding:5px 8px;font-size:13px;margin:2px 0 4px}
