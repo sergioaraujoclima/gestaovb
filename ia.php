@@ -181,7 +181,7 @@ foreach ($secoes as $k => $cs): if (!$cs && $k !== 'hoje') continue; ?>
 document.querySelectorAll('.ia-busca').forEach(function (inp) {
   inp.addEventListener('input', function () {
     var t = inp.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), box = inp.closest('.ia-contatos'), d = box.querySelector('details');
-    box.querySelectorAll('li').forEach(function (li) { li.hidden = t && li.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(t) < 0; });
+    box.querySelectorAll('li').forEach(function (li) { li.hidden = t && (li.firstElementChild || li).textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(t) < 0; });
     if (d && t) d.open = true;
   });
 });

@@ -139,13 +139,17 @@ function tour_ativo_sql($a = 'v') { return "($a.estorno IS NULL OR $a.estorno IN
 function ia_gerar_alertas($forcar = false) {
     if (!ia_v10()) return [];
     $ultima = config('ia_ultima_regra', '');
-    if (!$forcar && $ultima && strtotime($ultima) > time() - 3600) return [];
+    // Última alteração relevante na auditoria (pelo id, para não depender do fuso do MySQL): se houve algo depois da última rodada, refaz já.
+    $aud = 0;
+    try { $aud = (int)db()->query("SELECT MAX(id) FROM auditoria WHERE entidade IN ('cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha')")->fetchColumn(); } catch (Throwable $ex) {}
+    if (!$forcar && $ultima && strtotime($ultima) > time() - 3600 && $aud <= (int)config('ia_ultima_auditoria', '0')) return [];
     @set_time_limit(120);
     $erros = [];
     foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral', 'ia_r_campanhas'] as $f) {
         try { $f(); } catch (Throwable $ex) { $erros[] = $f . ': ' . $ex->getMessage(); }
     }
     config_salvar('ia_ultima_regra', date('Y-m-d H:i:s'));
+    config_salvar('ia_ultima_auditoria', (string)$aud);
     if ($erros) registrar_log('ia', 0, 'Erro nas regras de alerta', implode(' | ', $erros), ['id' => null, 'nome' => 'Sistema (automático)']);
     return $erros;
 }
