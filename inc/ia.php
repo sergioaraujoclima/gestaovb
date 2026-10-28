@@ -86,11 +86,14 @@ function wa_optout($t) {
     if ($t === null || $t === '' || $r === '' || config('wa_optout_ligado', '1') !== '1' || mb_stripos($t, $r) !== false) return $t;
     return rtrim($t) . "\n\n" . $r;
 }
-// Campanha de WhatsApp de um grupo de aniversariantes (regra "Mês de aniversário"): o texto dela vale para o cartão de aniversário.
-function ia_camp_aniversario() {
+// Campanha de um grupo de aniversariantes (regra "Mês de aniversário"). WhatsApp: o texto dela vale para o cartão de aniversário.
+// E-mail: só a liberada, que vira o botão "E-mail" ao lado do WhatsApp.
+function ia_camp_aniversario($canal = 'whatsapp') {
     if (!function_exists('camp_v11') || !camp_v11()) return null;
-    $canal = function_exists('camp_v12') && camp_v12() ? " AND c.canal = 'whatsapp'" : '';
-    foreach (ia_q("SELECT c.*, g.regras FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.status <> 'encerrada' AND g.ativo = 1 AND c.texto IS NOT NULL AND c.texto <> ''$canal ORDER BY c.status = 'liberada' DESC, c.id DESC") as $c)
+    $v12 = function_exists('camp_v12') && camp_v12();
+    if ($canal === 'email' && !$v12) return null;
+    $cond = $canal === 'email' ? "c.canal = 'email' AND c.status = 'liberada'" : "c.status <> 'encerrada' AND c.texto IS NOT NULL AND c.texto <> ''" . ($v12 ? " AND c.canal = 'whatsapp'" : '');
+    foreach (ia_q("SELECT c.*, g.regras FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE g.ativo = 1 AND $cond ORDER BY c.status = 'liberada' DESC, c.id DESC") as $c)
         foreach (json_decode((string)$c['regras'], true) ?: [] as $r) if (($r['campo'] ?? '') === 'mes_aniversario') return $c;
     return null;
 }
@@ -159,7 +162,7 @@ function ia_gerar_alertas($forcar = false) {
     // Última alteração relevante na auditoria (pelo id, para não depender do fuso do MySQL): se houve algo depois da última rodada, refaz já.
     $aud = 0;
     try { $aud = (int)db()->query("SELECT MAX(id) FROM auditoria WHERE entidade IN ('cliente', 'tour', 'entrega', 'venda', 'vendas_importacao', 'campanha')")->fetchColumn(); } catch (Throwable $ex) {}
-    if (!$forcar && $ultima && strtotime($ultima) > time() - 3600 && $aud <= (int)config('ia_ultima_auditoria', '0')) return [];
+    if (!$forcar && $ultima && strtotime($ultima) > time() - 3600 && $aud <= (int)config('ia_ultima_auditoria', '0') && config('ia_versao', '') === APP_VERSAO) return [];
     @set_time_limit(120);
     $erros = [];
     foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral', 'ia_r_campanhas'] as $f) {
@@ -167,6 +170,7 @@ function ia_gerar_alertas($forcar = false) {
     }
     config_salvar('ia_ultima_regra', date('Y-m-d H:i:s'));
     config_salvar('ia_ultima_auditoria', (string)$aud);
+    config_salvar('ia_versao', APP_VERSAO);   // sistema atualizado: os cartões são refeitos com as regras novas
     if ($erros) registrar_log('ia', 0, 'Erro nas regras de alerta', implode(' | ', $erros), ['id' => null, 'nome' => 'Sistema (automático)']);
     return $erros;
 }
@@ -286,11 +290,13 @@ function ia_r_b2c() {
     }
     usort($aniv, fn($a, $b) => $a['_f'] <=> $b['_f']);
     $campAniv = ia_camp_aniversario();   // se houver campanha de aniversariantes, o texto (e o cartão/imagem) dela vale aqui
+    $campAnivEmail = ia_camp_aniversario('email');
     if ($aniv) ia_cartao(['chave' => "aniversarios:$hoje", 'area' => 'b2c', 'tipo' => 'aniversario', 'prioridade' => 'media',
         'titulo' => 'Aniversariantes dos próximos 7 dias: ' . count($aniv) . ' cliente(s)',
         'texto' => 'Uma mensagem no dia (com uma condição especial) costuma gerar visita ou compra. Quem recusou WhatsApp de marketing aparece marcado.'
-            . ($campAniv ? "\nTexto: campanha \"" . $campAniv['titulo'] . '" (Grupos de campanha).' : "\nTexto: mensagem padrão de aniversário (Configuração). Crie uma campanha de WhatsApp num grupo de aniversariantes para usar o seu texto."),
-        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)'), $campAniv ? camp_texto($campAniv, $c) : null), $aniv)],
+            . ($campAniv ? "\nTexto: campanha \"" . $campAniv['titulo'] . '" (Grupos de campanha).' : "\nTexto: mensagem padrão de aniversário (Configuração). Crie uma campanha de WhatsApp num grupo de aniversariantes para usar o seu texto.")
+            . ($campAnivEmail ? "\nE-mail: campanha \"" . $campAnivEmail['titulo'] . '".' : ''),
+        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)'), $campAniv ? camp_texto($campAniv, $c) : null), $aniv)] + ($campAnivEmail ? ['email_camp' => (int)$campAnivEmail['id']] : []),
         'link' => 'crm_grupos.php', 'valido_ate' => $hoje]);
     if (!function_exists('vendas_v9') || !vendas_v9()) return;
     // Recompra: pessoas que compravam com frequência e sumiram.

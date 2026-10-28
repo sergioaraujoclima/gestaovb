@@ -102,7 +102,7 @@ require __DIR__ . '/inc/topo.php';
     <label class="l2">Link de avaliação no Google ({link_avaliacao})<input name="link_avaliacao" maxlength="300" placeholder="https://g.page/r/..." value="<?= e(config('link_avaliacao', '')) ?>"></label>
     <?php foreach ($msgs as $k => $rot): ?><label class="l2"><?= e($rot) ?><textarea name="<?= $k ?>" rows="4"><?= e(config($k)) ?></textarea></label><?php endforeach; ?>
     <label class="check l4"><input type="checkbox" name="wa_optout_ligado" <?= config('wa_optout_ligado', '1') === '1' ? 'checked' : '' ?>> Acrescentar a linha de descadastro no fim das mensagens de marketing (campanhas, aniversário, recompra, segunda compra e convite do clube)</label>
-    <label class="l4">Linha de descadastro<input name="wa_optout" maxlength="200" value="<?= e(config('wa_optout')) ?>"><span class="sub">Quem responder N no WhatsApp da vinícola deve ser registrado em Sugestões da IA › Registrar “N” (ou na ficha do cliente: “Aceita WhatsApp” = Não). Mensagens de tour (confirmação, boas-vindas, agradecimento) não levam essa linha.</span></label>
+    <label class="l4">Linha de descadastro<input name="wa_optout" maxlength="200" value="<?= e(config('wa_optout')) ?>"><span class="sub">Quem responder N no WhatsApp da vinícola deve ser marcado na ficha do cliente: “Aceita WhatsApp” = Não. Mensagens de tour (confirmação, boas-vindas, agradecimento) não levam essa linha.</span></label>
     <div class="l4 acoes"><button>Salvar mensagens</button></div>
   </form>
 </div>

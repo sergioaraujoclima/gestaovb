@@ -169,6 +169,41 @@ function email_lote($c, $max = 25, $quem = null) {
     return [$ok, $fal, $rest, $rest ? ($fal && !$ok ? 'falha' : ($ok + $fal >= $cabe && $cabe < $max ? 'limite' : 'ok')) : 'fim'];
 }
 
+// ---------- Envio avulso (botão "E-mail" ao lado do WhatsApp) ----------
+// Situação de cada cliente diante de uma campanha de e-mail: enviado, falhou, pode (tem e-mail e não recusou), recusou ou sem_email.
+function email_situacoes($campId, array $ids) {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (!$campId || !$ids) return [];
+    $in = implode(',', $ids); $r = [];
+    foreach (ia_q("SELECT id, email, aceita_email FROM clientes WHERE id IN ($in)") as $x)
+        $r[(int)$x['id']] = ['st' => !filter_var((string)$x['email'], FILTER_VALIDATE_EMAIL) ? 'sem_email' : (recusou($x['aceita_email']) ? 'recusou' : 'pode')];
+    foreach (ia_q("SELECT cliente_id, situacao, em, por FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id IN ($in)", [(int)$campId]) as $x)
+        if (isset($r[(int)$x['cliente_id']]) && in_array($x['situacao'], ['enviado', 'falhou'], true))
+            $r[(int)$x['cliente_id']] = ['st' => $x['situacao'], 'em' => date('d/m H:i', strtotime($x['em'])), 'por' => $x['por']];
+    return $r;
+}
+// Envia a campanha de e-mail para um cliente só. Devolve [ok, mensagem]. Não repete quem já recebeu e respeita o limite por hora.
+function email_individual($c, $cliId, $quem) {
+    if (!$c || camp_canal($c) !== 'email' || $c['status'] !== 'liberada') return [false, 'A campanha de e-mail não está liberada para envio.'];
+    $cli = linha('clientes', (int)$cliId);
+    if (!$cli) return [false, 'Cliente não encontrado.'];
+    if (!filter_var((string)$cli['email'], FILTER_VALIDATE_EMAIL)) return [false, 'O cliente não tem e-mail válido no cadastro.'];
+    if (recusou($cli['aceita_email'])) return [false, 'O cliente não aceita e-mails de marketing.'];
+    $s = db()->prepare("SELECT em FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ? AND situacao = 'enviado'"); $s->execute([$c['id'], $cli['id']]);
+    if ($em = $s->fetchColumn()) return [false, 'Este e-mail já foi enviado em ' . date('d/m H:i', strtotime($em)) . '.'];
+    if (email_restante_hora() <= 0) return [false, 'Limite de e-mails desta hora atingido. Tente de novo mais tarde.'];
+    [$as, $html, $txt] = email_montar($c, $cli);
+    $res = false; $erro = null;
+    try { $res = email_enviar_campanha($c, $cli['email'], $as, $html, $txt, $cli['id']); } catch (Throwable $ex) { $erro = $ex->getMessage(); }
+    if (!$res && !$erro) $erro = 'o servidor de e-mail recusou o envio';
+    $pdo = db();
+    $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli['id']]);
+    $pdo->prepare('INSERT INTO crm_campanha_envios (campanha_id, cliente_id, situacao, em, por, erro) VALUES (?,?,?,?,?,?)')
+        ->execute([$c['id'], $cli['id'], $res ? 'enviado' : 'falhou', date('Y-m-d H:i:s'), $quem, $erro ? mb_substr($erro, 0, 200) : null]);
+    registrar_log('campanha', $c['id'], 'E-mail individual', $cli['nome'] . ' <' . $cli['email'] . '>: ' . ($res ? 'enviado' : 'falhou (' . $erro . ')'));
+    return [$res, $res ? 'enviado' : 'Falha no envio: ' . $erro];
+}
+
 // ---------- Editor visual ----------
 function editor_email($nome, $valor, $urlUpload = null) {
     static $n = 0; $n++; $id = 'em-ed-' . $n;

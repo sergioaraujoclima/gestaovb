@@ -9,11 +9,21 @@ if ($c && camp_canal($c) === 'email') ir('ia_email.php?c=' . (int)$c['id']);
 $pode = $c && ((pode_ver_ia() && in_array($c['area'], ia_areas_do_usuario(), true)) || pode_gerir_grupos());
 if (!$pode) negar();
 $pdo = db(); $quem = $GLOBALS['USUARIO']['nome'];
+// Campanha de e-mail liberada do mesmo grupo: vira o botão "E-mail" ao lado do WhatsApp.
+$emailCamp = function_exists('camp_v12') && camp_v12() ? camp_do_grupo($c['grupo_id'], 'email') : null;
+if ($emailCamp && $emailCamp['status'] !== 'liberada') $emailCamp = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     header('Content-Type: application/json; charset=utf-8');
     $cli = (int)($_POST['cliente_id'] ?? 0); $sit = $_POST['situacao'] ?? '';
+    if ($sit === 'email') {
+        $s = $pdo->prepare('SELECT 1 FROM crm_grupo_membros WHERE grupo_id = ? AND cliente_id = ?'); $s->execute([$c['grupo_id'], $cli]);
+        if (!$emailCamp || !$s->fetchColumn()) { echo json_encode(['ok' => false, 'msg' => 'Não há campanha de e-mail liberada neste grupo.'], JSON_UNESCAPED_UNICODE); exit; }
+        [$ok, $msg] = email_individual($emailCamp, $cli, $quem);
+        echo json_encode(['ok' => $ok, 'msg' => $msg, 'em' => date('d/m H:i')], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     if ($sit === 'desfazer') $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli]);
     elseif (in_array($sit, ['enviado', 'pulado'], true)) {
         $s = $pdo->prepare('SELECT 1 FROM crm_grupo_membros WHERE grupo_id = ? AND cliente_id = ?'); $s->execute([$c['grupo_id'], $cli]);
@@ -38,6 +48,11 @@ $item = function ($x) use ($c) {
     return ['id' => (int)$x['id'], 'nome' => $x['nome'], 'tel' => $tel, 'telFmt' => $x['telefone'], 'cidade' => $x['cidade'], 'pj' => $x['tipo_pessoa'] === 'PJ', 'texto' => camp_texto($c, $x)];
 };
 $fila = array_map($item, $pub['fila']);
+if ($emailCamp) {
+    $sitEm = email_situacoes($emailCamp['id'], array_column($fila, 'id'));
+    foreach ($fila as &$f) $f['em'] = $sitEm[$f['id']] ?? ['st' => 'sem_email'];
+    unset($f);
+}
 usort($pub['feitos'], fn($a, $b) => strcmp($b['em'], $a['em']));
 $feitos = array_map(fn($x) => ['id' => (int)$x['id'], 'nome' => $x['nome'], 'sit' => $x['situacao'], 'em' => date('d/m H:i', strtotime($x['em'])), 'por' => $x['por']], $pub['feitos']);
 $img = camp_url_imagem($c);
@@ -69,6 +84,7 @@ require __DIR__ . '/inc/topo.php';
       <div class="disp-botoes">
         <?php if ($img): ?><button type="button" class="sec" id="d-img" title="Copia a imagem; na conversa, cole com Ctrl+V">📋 Copiar imagem</button><?php endif; ?>
         <button type="button" class="sec" id="d-copiar" title="Copia o texto da mensagem">📋 Copiar texto</button>
+        <?php if ($emailCamp): ?><span class="ok-env" id="d-email-ok" hidden></span><button type="button" class="sec" id="d-email" title="Envia o e-mail da campanha “<?= e($emailCamp['titulo']) ?>” só para este cliente">✉ Enviar e-mail</button><?php endif; ?>
         <button type="button" class="wa grande" id="d-abrir">Abrir conversa no WhatsApp ▶</button>
         <button type="button" class="sec" id="d-pular" title="Não enviar para este cliente nesta campanha">Pular</button>
       </div>
@@ -108,6 +124,13 @@ require __DIR__ . '/inc/topo.php';
       $('d-pos').textContent = (feitos.length + 1) + '/' + total + ' ';
       $('d-n').textContent = at.nome; $('d-tel').textContent = ' · ' + (at.telFmt || at.tel) + (at.cidade ? ' · ' + at.cidade : '');
       $('d-txt').innerHTML = fmt(at.texto);
+      if ($('d-email')) {   // e-mail: já enviado (mostra quando) ou botão para enviar só para este cliente
+        var em = at.em || {st: 'sem_email'}, pode = em.st === 'pode' || em.st === 'falhou';
+        $('d-email').hidden = !pode; $('d-email').disabled = false; $('d-email').textContent = em.st === 'falhou' ? '✉ Enviar e-mail (de novo)' : '✉ Enviar e-mail';
+        $('d-email-ok').hidden = pode;
+        $('d-email-ok').textContent = em.st === 'enviado' ? '✉ e-mail enviado ' + em.em : (em.st === 'recusou' ? 'não aceita e-mail' : 'sem e-mail');
+        $('d-email-ok').className = em.st === 'enviado' ? 'ok-env' : 'sub';
+      }
     }
     $('d-nprox').textContent = Math.max(0, fila.length - 1);
     $('d-prox').innerHTML = fila.slice(1, 16).map(function (f) { return '<li>' + esc(f.nome) + ' <span class="sub">' + esc(f.telFmt || '') + '</span></li>'; }).join('') + (fila.length > 16 ? '<li class="sub">e mais ' + (fila.length - 16) + '</li>' : '');
@@ -142,6 +165,14 @@ require __DIR__ . '/inc/topo.php';
     abrir();
   });
   $('d-pular').addEventListener('click', function () { avancar('pulado'); });
+  if ($('d-email')) $('d-email').addEventListener('click', function () {
+    var at = fila[0], b = this; if (!at) return;
+    b.disabled = true; b.textContent = 'Enviando…';
+    marcar(at.id, 'email').then(function (j) {
+      if (!j.ok) { alert(j.msg || 'Não foi possível enviar.'); render(); return; }
+      at.em = {st: 'enviado', em: j.em}; render();
+    }).catch(function () { alert('Sem conexão. Tente de novo.'); render(); });
+  });
   $('d-copiar').addEventListener('click', function () { var at = fila[0]; if (at && navigator.clipboard) navigator.clipboard.writeText(at.texto).then(function () { $('d-copiar').textContent = '✓ Texto copiado'; setTimeout(function () { $('d-copiar').textContent = '📋 Copiar texto'; }, 1500); }); });
   if ($('d-img')) $('d-img').addEventListener('click', function () {
     var b = this;

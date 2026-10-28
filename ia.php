@@ -28,6 +28,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['ok' => true, 'txt' => 'enviado ' . date('H:i') . ' · ' . $quem, 'feitos' => count($d['enviados']), 'total' => count($d['contatos'])], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    // Botão "E-mail" ao lado do WhatsApp: envia a campanha de e-mail ligada ao cartão para um cliente só.
+    if ($acao === 'email_individual') {
+        header('Content-Type: application/json; charset=utf-8');
+        $c = $cartao($_POST['id'] ?? 0); $d = $c ? (json_decode((string)$c['dados'], true) ?: []) : [];
+        $cliId = (int)($_POST['cliente_id'] ?? 0);
+        $naLista = in_array($cliId, array_map(fn($x) => (int)($x['cliente_id'] ?? 0), $d['contatos'] ?? []), true);
+        $camp = !empty($d['email_camp']) && function_exists('camp_por_id') ? camp_por_id($d['email_camp']) : null;
+        if (!$c || !$naLista || !$camp) { echo json_encode(['ok' => false, 'msg' => 'Não há campanha de e-mail ligada a este cartão.'], JSON_UNESCAPED_UNICODE); exit; }
+        [$ok, $msg] = email_individual($camp, $cliId, $quem);
+        if ($ok) $pdo->prepare("UPDATE ia_cartoes SET status = CASE WHEN status = 'nova' THEN 'andamento' ELSE status END, atualizado_em = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $c['id']]);
+        echo json_encode(['ok' => $ok, 'msg' => $msg, 'txt' => '✉ e-mail enviado ' . date('H:i')], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     if ($acao === 'status') {
         $c = $cartao($_POST['id'] ?? 0);
         $st = in_array($_POST['status'] ?? '', ['nova', 'andamento', 'feita', 'descartada'], true) ? $_POST['status'] : '';
@@ -40,18 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('"' . mb_strimwidth($c['titulo'], 0, 70, '…') . '" marcado como ' . mb_strtolower(nome_status_cartao($st)) . '.');
         }
         ir('ia.php?' . http_build_query(array_filter(['aba' => $_POST['aba'] ?? '', 'historico' => $_POST['historico'] ?? ''])));
-    }
-    // Cliente respondeu "N" no WhatsApp da vinícola: deixa de receber mensagens de marketing.
-    if ($acao === 'optout' || $acao === 'optout_desfazer') {
-        $id = (int)($_POST['cliente_id'] ?? 0); $antes = $id ? linha('clientes', $id) : null;
-        if ($antes) {
-            $sair = $acao === 'optout';
-            $pdo->prepare('UPDATE clientes SET aceita_whatsapp = ?, consentimento_em = ?, consentimento_origem = ? WHERE id = ?')
-                ->execute([$sair ? 0 : null, date('Y-m-d H:i:s'), mb_substr(($sair ? 'Respondeu N no WhatsApp · ' : 'Descadastro desfeito · ') . $quem, 0, 60), $id]);
-            registrar_alteracao('cliente', 'clientes', $id, $antes, $sair ? 'Descadastro do WhatsApp (respondeu N)' : 'Descadastro do WhatsApp desfeito');
-            flash($sair ? nome_proprio($antes['nome']) . ' não recebe mais mensagens de marketing pelo WhatsApp.' : 'Descadastro de ' . nome_proprio($antes['nome']) . ' desfeito (voltou para "não perguntado").');
-        }
-        ir('ia.php?' . http_build_query(['optout' => $_POST['termo'] ?? '']) . '#optout');
     }
     if ($acao === 'gerar_alertas') {
         $erros = ia_gerar_alertas(true);
@@ -78,17 +79,11 @@ $hoje = date('Y-m-d');
 $ids = [];
 foreach ($lista as $c) foreach ($c['dados']['contatos'] ?? [] as $p) $ids[(int)($p['cliente_id'] ?? 0)] = 1;
 unset($ids[0]);
+// Situação do e-mail de cada contato nos cartões que têm campanha de e-mail ligada (ex.: aniversariantes).
+$GLOBALS['IA_EMAILS'] = [];
+foreach ($lista as $c) if (!empty($c['dados']['email_camp']) && function_exists('email_situacoes'))
+    $GLOBALS['IA_EMAILS'][(int)$c['dados']['email_camp']] = email_situacoes((int)$c['dados']['email_camp'], array_map(fn($p) => (int)($p['cliente_id'] ?? 0), $c['dados']['contatos'] ?? []));
 $GLOBALS['IA_RECUSARAM'] = $ids ? array_flip(array_map('intval', array_column(ia_q('SELECT id FROM clientes WHERE aceita_whatsapp = 0 AND id IN (' . implode(',', array_keys($ids)) . ')'), 'id'))) : [];
-// Busca para registrar o "N": pelo celular (últimos 8 dígitos, com ou sem o 9) ou pelo nome.
-$optTermo = trim(mb_substr((string)($_GET['optout'] ?? ''), 0, 80));
-$optRes = null;
-if ($optTermo !== '') {
-    $dig = preg_replace('/\D/', '', $optTermo);
-    $optRes = strlen($dig) >= 8
-        ? ia_q('SELECT id, nome, telefone, telefone_e164, tipo_pessoa, aceita_whatsapp, consentimento_em, consentimento_origem FROM clientes WHERE telefone_e164 LIKE ? OR telefone LIKE ? ORDER BY nome LIMIT 200', ['%' . substr($dig, -8), '%' . substr($dig, -4)])
-        : (mb_strlen($optTermo) >= 3 ? ia_q('SELECT id, nome, telefone, tipo_pessoa, aceita_whatsapp, consentimento_em, consentimento_origem FROM clientes WHERE nome LIKE ? ORDER BY nome LIMIT 20', ['%' . $optTermo . '%']) : []);
-    if (strlen($dig) >= 8) $optRes = array_slice(array_values(array_filter($optRes, fn($r) => substr(preg_replace('/\D/', '', (string)$r['telefone_e164']), -8) === substr($dig, -8) || substr(preg_replace('/\D/', '', (string)$r['telefone']), -8) === substr($dig, -8))), 0, 20);
-}
 $secoes = ['hoje' => [], 'semana' => [], 'ia' => []];
 foreach ($lista as $c) {
     if ($c['origem'] === 'ia') $secoes['ia'][] = $c;
@@ -134,6 +129,12 @@ function ia_render_cartao($c, $aba, $tiposMarketing) {
             if ($i === 8) $h .= '</ul><details><summary>Ver os outros ' . (count($contatos) - 8) . '</summary><ul>';
             $h .= '<li><div><a href="clientes.php?editar=' . (int)$p['cliente_id'] . '">' . e($p['nome']) . '</a>' . ($p['detalhe'] ? '<br><small>' . e($p['detalhe']) . '</small>' : '') . '</div><div class="ia-acao" id="ct-' . (int)$c['id'] . '-' . $i . '">';
             if (isset($env[$i])) $h .= '<span class="ok-env">✓ enviado ' . date('d/m H:i', strtotime($env[$i]['em'])) . ' · ' . e($env[$i]['por']) . '</span>';
+            if (!empty($d['email_camp'])) {   // e-mail antes do WhatsApp: já enviado ou botão para enviar só para este cliente
+                $em = $GLOBALS['IA_EMAILS'][(int)$d['email_camp']][(int)$p['cliente_id']] ?? ['st' => 'sem_email'];
+                if ($em['st'] === 'enviado') $h .= '<span class="ok-env em" title="' . e('por ' . $em['por']) . '">✉ e-mail enviado ' . e($em['em']) . '</span>';
+                elseif ($em['st'] === 'pode' || $em['st'] === 'falhou') $h .= '<button type="button" class="peq sec em-ind" data-id="' . (int)$c['id'] . '" data-cli="' . (int)$p['cliente_id'] . '"' . ($em['st'] === 'falhou' ? ' title="O envio anterior falhou"' : '') . '>✉ E-mail' . ($em['st'] === 'falhou' ? ' (de novo)' : '') . '</button>';
+                elseif ($em['st'] === 'recusou') $h .= '<span class="tag neutra" title="Não aceita e-mail de marketing">sem e-mail</span>';
+            }
             if ($p['msg'] !== null) {
                 if ($mkt && (!empty($p['recusou']) || isset($GLOBALS['IA_RECUSARAM'][(int)$p['cliente_id']]))) $h .= '<span class="tag pend">recusou marketing</span>';
                 elseif ($p['tel']) $h .= '<a class="btn peq wa" target="_blank" rel="noopener" href="' . e(whatsapp_link($p['tel'], $p['msg'])) . '" data-id="' . (int)$c['id'] . '" data-idx="' . $i . '" title="' . e($p['msg']) . '">' . (isset($env[$i]) ? 'Reenviar' : 'WhatsApp') . '</a>';
@@ -195,27 +196,6 @@ require __DIR__ . '/inc/topo.php';
 </section>
 <?php endif; ?>
 
-<details class="cartao ia-optout" id="optout"<?= $optTermo !== '' ? ' open' : '' ?>>
-  <summary><strong>Registrar “N”</strong> <span class="sub">· o cliente respondeu N no WhatsApp e não quer mais receber mensagens</span></summary>
-  <form method="get" action="ia.php#optout" class="ia-optout-busca">
-    <input type="search" name="optout" value="<?= e($optTermo) ?>" placeholder="Celular de quem respondeu (ex.: 61 99999-0000) ou nome" autocomplete="off" required>
-    <button class="peq">Procurar</button>
-  </form>
-  <?php if ($optRes !== null): ?>
-    <?php if (!$optRes): ?><p class="sub">Nenhum cliente com esse <?= strlen(preg_replace('/\D/', '', $optTermo)) >= 8 ? 'celular' : 'nome' ?>. Confira o número no WhatsApp (copie e cole) ou procure pelo nome.</p><?php endif; ?>
-    <ul class="ia-optout-lista">
-    <?php foreach ($optRes as $r): $fora = (string)$r['aceita_whatsapp'] === '0'; ?>
-      <li><div><a href="clientes.php?editar=<?= (int)$r['id'] ?>"><?= e($r['nome']) ?></a><br><small><?= e($r['telefone'] ?: 'sem telefone') ?> · <?= $fora ? 'descadastrado' . ($r['consentimento_em'] ? ' em ' . date('d/m/Y H:i', strtotime($r['consentimento_em'])) : '') . ($r['consentimento_origem'] ? ' · ' . e($r['consentimento_origem']) : '') : ((string)$r['aceita_whatsapp'] === '1' ? 'autorizou WhatsApp' : 'não perguntado') ?></small></div>
-        <form method="post"><?= csrf_campo() ?><input type="hidden" name="cliente_id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="termo" value="<?= e($optTermo) ?>">
-          <?php if ($fora): ?><span class="tag pend">não recebe</span> <button class="peq sec" name="acao" value="optout_desfazer" onclick="return confirm('Desfazer o descadastro? Só faça isso se o cliente pediu para voltar a receber.')">Desfazer</button>
-          <?php else: ?><button class="peq perigo" name="acao" value="optout" onclick="return confirm('Marcar <?= e(addslashes(nome_proprio($r['nome']))) ?> como quem NÃO quer receber mensagens pelo WhatsApp?')">Não quer receber</button><?php endif; ?>
-        </form></li>
-    <?php endforeach; ?>
-    </ul>
-  <?php endif; ?>
-  <p class="sub">Quem é marcado sai das filas das campanhas e aparece como “recusou marketing” nos cartões. Avisos de tour (confirmação, boas-vindas, agradecimento) continuam liberados. Também dá para mudar na ficha do cliente, em “Aceita WhatsApp”.</p>
-</details>
-
 <?php $rot = ['hoje' => ['Para hoje', 'tours do dia, confirmações, agradecimentos e o que vence hoje'], 'semana' => ['Esta semana', 'campanhas, clientes para contatar e pontos de atenção'], 'ia' => ['✦ Sugestões da IA', 'iniciativas da análise semanal']];
 foreach ($secoes as $k => $cs): if (!$cs && $k !== 'hoje') continue; ?>
 <h2><?= $rot[$k][0] ?> <small><?= count($cs) ?> · <?= $rot[$k][1] ?></small></h2>
@@ -231,6 +211,17 @@ document.querySelectorAll('.ia-busca').forEach(function (inp) {
     var t = inp.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), box = inp.closest('.ia-contatos'), d = box.querySelector('details');
     box.querySelectorAll('li').forEach(function (li) { li.hidden = t && (li.firstElementChild || li).textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').indexOf(t) < 0; });
     if (d && t) d.open = true;
+  });
+});
+document.querySelectorAll('.em-ind').forEach(function (b) {
+  b.addEventListener('click', function () {
+    if (!confirm('Enviar o e-mail da campanha para este cliente agora?')) return;
+    b.disabled = true; var rot = b.textContent; b.textContent = 'Enviando…';
+    var f = new FormData(); f.append('csrf', <?= json_encode(csrf_token()) ?>); f.append('acao', 'email_individual'); f.append('id', b.dataset.id); f.append('cliente_id', b.dataset.cli);
+    fetch('ia.php', {method: 'POST', body: f, credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok) { alert(j.msg || 'Não foi possível enviar.'); b.disabled = false; b.textContent = rot; return; }
+      var s = document.createElement('span'); s.className = 'ok-env em'; s.textContent = j.txt; b.replaceWith(s);
+    }).catch(function () { alert('Sem conexão. Tente de novo.'); b.disabled = false; b.textContent = rot; });
   });
 });
 document.querySelectorAll('a.wa').forEach(function (a) {
