@@ -21,6 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         config_salvar('email_limite_hora', (string)max(10, min(2000, (int)($_POST['email_limite_hora'] ?? 200))));
         config_salvar('email_lote', (string)max(5, min(100, (int)($_POST['email_lote'] ?? 25))));
         config_salvar('email_pausa', (string)max(5, min(600, (int)($_POST['email_pausa'] ?? 20))));
+        $rem = trim((string)($_POST['email_remetente'] ?? ''));
+        config_salvar('email_remetente', filter_var($rem, FILTER_VALIDATE_EMAIL) ? $rem : '');
         config_salvar('email_resposta', filter_var(trim($_POST['email_resposta'] ?? ''), FILTER_VALIDATE_EMAIL) ? trim($_POST['email_resposta']) : '');
         registrar_log('ia', 0, 'Configuração da IA', 'modelo ' . config('ia_modelo') . ($k !== '' ? '; chave da API atualizada' : '') . (!empty($_POST['remover_chave']) ? '; chave removida' : '') . '; e-mails ' . (config('ia_emails') === '1' ? 'ligados' : 'desligados'));
         flash('Configuração da IA salva.'); ir('ia_config.php');
@@ -94,7 +96,9 @@ require __DIR__ . '/inc/topo.php';
     <label>Limite por hora<input type="number" name="email_limite_hora" min="10" max="2000" value="<?= (int)config('email_limite_hora', '200') ?>"></label>
     <label>E-mails por lote<input type="number" name="email_lote" min="5" max="100" value="<?= (int)config('email_lote', '25') ?>"></label>
     <label>Pausa entre lotes (s)<input type="number" name="email_pausa" min="5" max="600" value="<?= (int)config('email_pausa', '20') ?>"></label>
-    <label>Responder para (e-mail)<input type="email" name="email_resposta" placeholder="<?= e(MAIL_DE) ?>" value="<?= e(config('email_resposta', '')) ?>"></label>
+    <label>Remetente das campanhas<input type="email" name="email_remetente" required value="<?= e(email_remetente()) ?>" title="Endereço que aparece como remetente dos e-mails de campanha. Precisa existir como conta de e-mail no cPanel."></label>
+    <label>Responder para (e-mail)<input type="email" name="email_resposta" placeholder="<?= e(email_remetente()) ?>" value="<?= e(config('email_resposta', '')) ?>"></label>
+    <p class="l4 sub" style="margin:0">Campanhas saem por <strong><?= e(email_remetente()) ?></strong>. Os demais e-mails do sistema (alertas aos gerentes, extratos, avisos) continuam saindo por <strong><?= e(MAIL_DE) ?></strong>. O remetente das campanhas precisa existir como conta de e-mail no cPanel.</p>
     <div class="l4 acoes"><button>Salvar</button></div>
   </form>
   <?php if ($chave): ?><form method="post" class="acoes"><?= csrf_campo() ?><button class="peq sec" name="acao" value="testar">Testar conexão com a IA</button></form><?php endif; ?>
@@ -108,7 +112,7 @@ require __DIR__ . '/inc/topo.php';
   <h2 style="margin-top:0">Diagnóstico do e-mail</h2>
   <p class="sub">Consulta feita agora, pelo próprio servidor, no DNS de <strong><?= e($dg['dominio']) ?></strong>. É o que Gmail, Outlook e outros conferem antes de aceitar um e-mail.</p>
   <table class="diag"><tbody>
-    <tr><td>Remetente</td><td><?= e($dg['remetente']) ?> <?= $dg['ativo'] ? '' : ' · <strong>envio desligado (MAIL_ATIVO)</strong>' ?><?= $dg['gratis'] ? '<br><strong class="erro-txt">Remetente de e-mail gratuito: Gmail, Outlook e Yahoo descartam e-mails "de" ' . e($dg['dominio']) . ' enviados por outro servidor. Use um endereço @vinicolabrasilia.com.br (peça para trocar o MAIL_DE no config.php).</strong>' : '' ?></td></tr>
+    <tr><td>Remetente das campanhas</td><td><?= e($dg['remetente']) ?> <?= $dg['ativo'] ? '' : ' · <strong>envio desligado (MAIL_ATIVO)</strong>' ?><?= $dg['gratis'] ? '<br><strong class="erro-txt">Remetente de e-mail gratuito: Gmail, Outlook e Yahoo descartam e-mails "de" ' . e($dg['dominio']) . ' enviados por outro servidor. Use um endereço @vinicolabrasilia.com.br (peça para trocar o MAIL_DE no config.php).</strong>' : '' ?></td></tr>
     <tr><td>Quem recebe os e-mails do domínio (MX)</td><td><?= $dg['mx'] ? e(implode(', ', $dg['mx'])) . ' · <strong>' . e($dg['provedor']) . '</strong>' : '<strong>nenhum MX encontrado</strong>' ?>
       <?= $dg['externo'] ? '<br><span class="erro-txt">As caixas de e-mail do domínio ficam fora da HostGator. E-mails do sistema para endereços @' . e($dg['dominio']) . ' podem ficar presos no servidor: no cPanel, em <strong>Roteamento de e-mail</strong> (Email Routing), escolha <strong>Trocador de e-mails remoto</strong> (Remote Mail Exchanger). Para testar sem esse ajuste, use um Gmail pessoal.</span>' : '' ?></td></tr>
     <tr><td>SPF (servidores autorizados a enviar)</td><td><?= $dg['spf'] ? $okI . ' <code>' . e($dg['spf']) . '</code>' . ($dg['spf_varios'] ? '<br><span class="erro-txt">Há mais de um registro SPF: os provedores tratam como inválido. Deixe um só, juntando os dois.</span>' : '') : $nokI . ' sem registro SPF' ?></td></tr>

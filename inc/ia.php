@@ -52,6 +52,7 @@ function ia_config_padrao() {
         'msg_recompra' => "Olá, {nome}! Faz um tempo que não nos vemos por aqui. Chegaram novidades na Vinícola Brasília e separamos uma sugestão especial para você. Posso te mandar?",
         'msg_segunda_compra' => "Olá, {nome}! Obrigado pela sua compra na Vinícola Brasília. Gostou do vinho? Temos outros rótulos que combinam com o seu gosto. Posso te indicar?",
         'msg_b2b_reposicao' => "Olá! Aqui é da Vinícola Brasília. Passando para saber como estão os nossos vinhos aí na {nome}. Precisa de reposição? Temos novidades na tabela deste mês.",
+        'email_remetente' => 'brasilia@vinicolabrasilia.com.br',
         'wa_optout' => 'Se não quiser mais receber nossas mensagens, responda *N*.',
         'msg_b2b_boas_vindas' => "Olá! Aqui é da Vinícola Brasília. Obrigado pela primeira compra da {nome}! Fico à disposição para pedidos, material de divulgação e treinamento da equipe sobre os nossos vinhos.",
     ];

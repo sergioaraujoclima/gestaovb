@@ -117,20 +117,26 @@ function email_montar($c, $cli, $rastrear = true) {
     return [strtr((string)$c['assunto'], $v), $html, $txt];
 }
 
+// Remetente das campanhas (Configuração). Os e-mails do sistema e dos tours continuam saindo pelo MAIL_DE do config.php.
+function email_remetente() {
+    $r = trim((string)config('email_remetente'));
+    return filter_var($r, FILTER_VALIDATE_EMAIL) ? $r : (string)MAIL_DE;
+}
 // Envia um e-mail de campanha (HTML + texto), com descadastro de um clique no cabeçalho (exigido por Gmail e Yahoo).
 function email_enviar_campanha($c, $para, $assunto, $html, $texto, $cid = 0) {
     if (!MAIL_ATIVO) throw new RuntimeException('O envio de e-mail está desligado no config.php (MAIL_ATIVO).');
     if (!filter_var($para, FILTER_VALIDATE_EMAIL)) return false;
     $nome = trim((string)($c['remetente'] ?: MAIL_NOME));
     $b = 'vb' . bin2hex(random_bytes(8));
-    $resp = filter_var((string)config('email_resposta', ''), FILTER_VALIDATE_EMAIL) ? config('email_resposta', '') : MAIL_DE;
-    $cab = "MIME-Version: 1.0\r\nFrom: " . mb_encode_mimeheader($nome, 'UTF-8', 'B') . ' <' . MAIL_DE . ">\r\nReply-To: $resp\r\n"
-        . 'Message-ID: <' . bin2hex(random_bytes(10)) . '@' . substr(strrchr(MAIL_DE, '@'), 1) . ">\r\n"
-        . ($cid ? 'List-Unsubscribe: <' . email_link('d', $c, $cid) . '>, <mailto:' . MAIL_DE . "?subject=descadastrar>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n" : '')
+    $de = email_remetente();
+    $resp = filter_var((string)config('email_resposta', ''), FILTER_VALIDATE_EMAIL) ? config('email_resposta', '') : $de;
+    $cab = "MIME-Version: 1.0\r\nFrom: " . mb_encode_mimeheader($nome, 'UTF-8', 'B') . ' <' . $de . ">\r\nReply-To: $resp\r\n"
+        . 'Message-ID: <' . bin2hex(random_bytes(10)) . '@' . substr(strrchr($de, '@'), 1) . ">\r\n"
+        . ($cid ? 'List-Unsubscribe: <' . email_link('d', $c, $cid) . '>, <mailto:' . $de . "?subject=descadastrar>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n" : '')
         . "Content-Type: multipart/alternative; boundary=\"$b\"";
     $corpo = "--$b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($texto))
         . "--$b\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($html)) . "--$b--\r\n";
-    return @mail($para, mb_encode_mimeheader($assunto, 'UTF-8', 'B'), $corpo, $cab, '-f' . MAIL_DE);
+    return @mail($para, mb_encode_mimeheader($assunto, 'UTF-8', 'B'), $corpo, $cab, '-f' . $de);
 }
 
 // Quantos e-mails de campanha ainda cabem nesta hora (a hospedagem compartilhada limita envios por hora).
@@ -172,7 +178,7 @@ function email_lote($c, $max = 25, $quem = null) {
 // ---------- Diagnóstico (Configuração › E-mail) ----------
 // Consulta o DNS do domínio do remetente a partir do próprio servidor: MX (quem recebe), SPF, DKIM e DMARC (o que os provedores conferem).
 function email_diagnostico() {
-    $de = (string)MAIL_DE; $dom = strtolower(substr((string)strrchr($de, '@'), 1));
+    $de = email_remetente(); $dom = strtolower(substr((string)strrchr($de, '@'), 1));
     $txt = function ($nome) { $r = @dns_get_record($nome, DNS_TXT) ?: []; return array_map(fn($x) => $x['txt'] ?? implode('', $x['entries'] ?? []), $r); };
     $mx = array_map(fn($x) => strtolower($x['target']), @dns_get_record($dom, DNS_MX) ?: []);
     $spf = array_values(array_filter($txt($dom), fn($t) => stripos($t, 'v=spf1') === 0));
