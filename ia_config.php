@@ -106,6 +106,24 @@ require __DIR__ . '/inc/topo.php';
     <?= $dest ? e(implode('; ', array_map(fn($u) => $u['nome'] . ' (' . implode(', ', array_map(fn($a) => ia_areas()[$a], $u['areas'])) . ')', $dest))) : '<strong>nenhum ainda</strong> — dê os perfis de gerente em <a href="usuarios.php">Controle de acesso</a>' ?>.</p>
 </div>
 
+<?php
+// Segurança do PHP do servidor (PHP2Shell, CVE-2026-109618/109619, out/2026): versão corrigida por ramo.
+$phpCorr = ['8.5' => '8.5.12', '8.4' => '8.4.27', '8.3' => '8.3.36', '8.2' => '8.2.35'];
+$phpRamo = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+$phpOk = isset($phpCorr[$phpRamo]) ? version_compare(PHP_VERSION, $phpCorr[$phpRamo], '>=') : null;
+$upProg = (bool)ini_get('session.upload_progress.enabled');
+?>
+<div class="cartao" id="seguranca-php">
+  <h2 style="margin-top:0">Segurança do PHP do servidor</h2>
+  <table class="diag"><tbody>
+    <tr><td>Versão do PHP</td><td><strong><?= e(PHP_VERSION) ?></strong> (<?= e(PHP_SAPI) ?>) ·
+      <?= $phpOk === true ? '<span class="tag ok">corrigida</span> já tem a correção do PHP2Shell (CVE-2026-109618 e 109619)'
+        : ($phpOk === false ? '<span class="tag pend">vulnerável</span> <span class="erro-txt">precisa da ' . e($phpCorr[$phpRamo]) . ' ou mais nova (PHP2Shell, CVE-2026-109618 e 109619)</span>'
+        : '<span class="tag pend">sem correção oficial</span> <span class="erro-txt">ramo ' . e($phpRamo) . ' sem versão corrigida: mude para PHP 8.3 ou mais novo</span>') ?></td></tr>
+    <tr><td>Progresso de upload na sessão</td><td><?= $upProg ? '<span class="tag pend">ligado</span> recomendação do PHP até corrigir: desligar (session.upload_progress.enabled = 0)' : '<span class="tag ok">desligado</span> mitigação da CVE-2026-109619 e da CVE-2026-115560 ativa nesta pasta' ?></td></tr>
+  </tbody></table>
+  <?php if ($phpOk !== true): ?><p class="aviso erro">A falha é do PHP da hospedagem, não do código do sistema, e já está sendo explorada. No cPanel, em <strong>MultiPHP Manager</strong> (ou "Selecionar versão do PHP"), veja se há versão corrigida disponível; se não houver, abra um chamado na HostGator pedindo a atualização do PHP (citando PHP2Shell, CVE-2026-109618 e CVE-2026-109619) e a reinicialização dos processos do PHP.</p><?php endif; ?>
+</div>
 <?php $dg = function_exists('email_diagnostico') ? email_diagnostico() : null; ?>
 <?php if ($dg): $okI = '<span class="tag ok">ok</span>'; $nokI = '<span class="tag pend">falta</span>'; ?>
 <div class="cartao" id="diag-email">
