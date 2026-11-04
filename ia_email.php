@@ -8,9 +8,21 @@ $pode = $c && camp_canal($c) === 'email' && ((pode_ver_ia() && in_array($c['area
 if (!$pode) negar();
 $lote = max(5, min(100, (int)config('email_lote', '25')));
 
+$ag = function_exists('camp_v13') && camp_v13() ? camp_agenda($c) : null;   // disparo calibrado: envio automático, aqui só acompanha
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['acao'] ?? '', ['pausar', 'retomar'], true)) {
+    csrf_check();
+    if ($ag && $c['status'] === 'liberada') {
+        $ret = $_POST['acao'] === 'retomar';
+        db()->prepare('UPDATE crm_campanhas SET auto_envio = ?, atualizado_em = ? WHERE id = ?')->execute([$ret ? 1 : 0, date('Y-m-d H:i:s'), $c['id']]);
+        registrar_log('campanha', $c['id'], $ret ? 'Disparo retomado' : 'Disparo pausado', $c['titulo']);
+        flash($ret ? 'Disparo retomado.' : 'Disparo pausado. A fila fica guardada.');
+    }
+    ir('ia_email.php?c=' . (int)$c['id']);
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     header('Content-Type: application/json; charset=utf-8');
+    if ($ag) { echo json_encode(['ok' => false, 'msg' => 'Esta campanha tem disparo programado: os e-mails saem sozinhos no intervalo configurado.'], JSON_UNESCAPED_UNICODE); exit; }
     if ($c['status'] !== 'liberada') { echo json_encode(['ok' => false, 'msg' => 'Esta campanha não está liberada para envio.'], JSON_UNESCAPED_UNICODE); exit; }
     try { [$ok, $fal, $rest, $motivo] = email_lote($c, $lote); }
     catch (Throwable $ex) { echo json_encode(['ok' => false, 'msg' => $ex->getMessage()], JSON_UNESCAPED_UNICODE); exit; }
@@ -42,6 +54,18 @@ require __DIR__ . '/inc/topo.php';
 </div>
 <div class="disp-grade">
   <section class="cartao">
+    <?php if ($ag): $cronCmd = 'php ' . __DIR__ . '/cron_ia.php emails'; ?>
+    <h2 style="margin-top:0">Disparo programado</h2>
+    <p class="ia-agenda"><strong><?= e(camp_agenda_rotulo($ag['situacao'])) ?>:</strong> <?= e(camp_agenda_resumo($ag)) ?></p>
+    <p class="sub">Início <?= e(date('d/m/Y H:i', $ag['inicio'])) ?> · um e-mail a cada <?= (int)$ag['intervalo'] ?> min · <?= (int)$ag['total'] ?> cliente(s) no público. Os e-mails saem sozinhos pela tarefa agendada do servidor<?= $ag['cron'] ? ' (última rodada: ' . e(data_hora_curta($ag['cron'])) . ')' : '' ?>.</p>
+    <?php if ($ag['cron_parado']): ?><p class="aviso erro">A tarefa agendada não roda há mais de 40 minutos<?= $ag['cron'] ? '' : ' (nunca rodou)' ?>: o disparo está parado. No cPanel › Trabalhos Cron, cadastre a cada 15 minutos: <code><?= e($cronCmd) ?></code></p><?php endif; ?>
+    <?php if (in_array($ag['situacao'], ['enviando', 'programada', 'pausada'], true)): ?>
+    <form method="post" class="acoes"><?= csrf_campo() ?><input type="hidden" name="c" value="<?= (int)$c['id'] ?>">
+      <?= $ag['situacao'] === 'pausada' ? '<button name="acao" value="retomar">Retomar disparo</button>' : '<button class="sec" name="acao" value="pausar">Pausar disparo</button>' ?>
+      <?php if (pode_gerir_grupos()): ?><a class="btn sec" href="crm_grupos.php?ver=<?= (int)$c['grupo_id'] ?>&aba=email#calibragem">Mudar calibragem</a><?php endif; ?>
+    </form>
+    <?php endif; ?>
+    <?php else: ?>
     <h2 style="margin-top:0">Enviar</h2>
     <p class="sub">Os e-mails saem em lotes de <?= $lote ?>, respeitando o limite de <?= email_limite_hora() ?> por hora configurado. Nesta hora ainda cabem <strong id="e-hora"><?= email_restante_hora() ?></strong>.<?= $c['auto_envio'] ? ' O envio automático pelo agendamento está ligado: a fila também anda sozinha.' : '' ?></p>
     <div class="acoes" style="flex-wrap:wrap">
@@ -49,6 +73,7 @@ require __DIR__ . '/inc/topo.php';
       <button class="sec" id="e-tudo" <?= $n['pendentes'] && $c['status'] === 'liberada' ? '' : 'disabled' ?>>Enviar todos, lote a lote</button>
       <button class="sec perigo" id="e-parar" hidden>Parar</button>
     </div>
+    <?php endif; ?>
     <p class="aviso" id="e-msg" hidden></p>
     <h2>Últimos envios</h2>
     <div class="rolagem"><table class="mini"><thead><tr><th>Cliente</th><th>Quando</th><th>Situação</th></tr></thead><tbody id="e-ult">
@@ -62,6 +87,7 @@ require __DIR__ . '/inc/topo.php';
     <iframe class="em-previa" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="<?= e($previa) ?>" title="Prévia do e-mail"></iframe>
   </section>
 </div>
+<?php if (!$ag): ?>
 <script>
 (function () {
   var CSRF = <?= json_encode(csrf_token()) ?>, CID = <?= (int)$c['id'] ?>, PAUSA = <?= max(5, (int)config('email_pausa', '20')) ?>, rodando = false, total = <?= (int)$n['total'] ?>;
@@ -97,4 +123,5 @@ require __DIR__ . '/inc/topo.php';
   $('e-parar').addEventListener('click', function () { rodando = false; msg('Envio pausado. A fila continua de onde parou.'); });
 })();
 </script>
+<?php endif; ?>
 <?php require __DIR__ . '/inc/rodape.php'; ?>

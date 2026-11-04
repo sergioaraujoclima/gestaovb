@@ -25,6 +25,52 @@ function camp_v12() {
     }
     return $ok;
 }
+// v13: calibragem do disparo de e-mail (início e intervalo em minutos).
+function camp_v13() {
+    static $ok = null;
+    if ($ok === null) {
+        try { db()->query('SELECT disparo_inicio, disparo_intervalo FROM crm_campanhas WHERE 1 = 0'); $ok = true; }
+        catch (Throwable $ex) { $ok = false; }
+    }
+    return $ok;
+}
+function camp_tem_agenda($c) { return !empty($c['disparo_inicio']) && (int)($c['disparo_intervalo'] ?? 0) >= 2; }
+// Situação do disparo programado: quantos já foram, quantos faltam, quando sai o próximo e quando termina.
+// Pausa = auto_envio desligado. Os horários são previsão: o envio real acontece nas rodadas da tarefa agendada (cron).
+function camp_agenda($c, $n = null) {
+    if (!camp_tem_agenda($c)) return null;
+    $n = $n ?? camp_contagem($c);
+    $iv = (int)$c['disparo_intervalo'] * 60; $ini = strtotime($c['disparo_inicio']); $agora = time();
+    $s = db()->prepare("SELECT COUNT(*) FROM crm_campanha_envios WHERE campanha_id = ? AND situacao IN ('enviado', 'falhou') AND em >= ?");
+    $s->execute([$c['id'], date('Y-m-d H:i:s', $ini)]); $feitos = (int)$s->fetchColumn();
+    $pend = (int)$n['pendentes'];
+    $prox = $pend ? max($agora, $ini + $feitos * $iv) : null;
+    $fim = $pend ? $prox + ($pend - 1) * $iv : null;
+    $pausada = $c['status'] === 'liberada' && empty($c['auto_envio']);
+    $ultCron = (string)config('cron_emails_ultimo', '');
+    $situacao = $c['status'] !== 'liberada' ? ($c['status'] === 'encerrada' ? 'encerrada' : 'rascunho')
+        : (!$pend ? 'concluida' : ($pausada ? 'pausada' : ($ini > $agora ? 'programada' : 'enviando')));
+    return ['inicio' => $ini, 'intervalo' => (int)$c['disparo_intervalo'], 'feitos' => $feitos, 'pendentes' => $pend, 'enviados' => (int)$n['enviados'],
+        'falhas' => (int)$n['falhas'], 'total' => (int)$n['total'], 'proximo' => $prox, 'fim' => $fim, 'situacao' => $situacao,
+        'cron' => $ultCron ? strtotime($ultCron) : null, 'cron_parado' => $situacao === 'enviando' && (!$ultCron || strtotime($ultCron) < $agora - 40 * 60)];
+}
+function camp_agenda_rotulo($s) {
+    return ['programada' => 'Programado', 'enviando' => 'Enviando', 'pausada' => 'Pausado', 'concluida' => 'Concluído', 'rascunho' => 'Rascunho', 'encerrada' => 'Encerrado'][$s] ?? $s;
+}
+function data_hora_curta($t) { return $t ? (date('Y-m-d', $t) === date('Y-m-d') ? 'hoje ' : (date('Y-m-d', $t) === date('Y-m-d', strtotime('+1 day')) ? 'amanhã ' : date('d/m ', $t))) . date('H:i', $t) : '—'; }
+// Resumo em uma frase (cartão de Alertas, aba do grupo, tela de envio).
+function camp_agenda_resumo($a) {
+    if (!$a) return '';
+    $base = 'a cada ' . $a['intervalo'] . ' min · ' . $a['enviados'] . ' enviado(s)' . ($a['falhas'] ? ', ' . $a['falhas'] . ' falha(s)' : '') . ' · ' . $a['pendentes'] . ' na fila';
+    switch ($a['situacao']) {
+        case 'programada': return 'Começa ' . data_hora_curta($a['inicio']) . ', ' . $base . ' · término previsto ' . data_hora_curta($a['fim']);
+        case 'enviando': return ucfirst($base) . ' · próximo ~' . data_hora_curta($a['proximo']) . ' · término previsto ' . data_hora_curta($a['fim']);
+        case 'pausada': return ucfirst($base) . ' · se retomar agora, termina ~' . data_hora_curta($a['fim']);
+        case 'concluida': return 'Concluído: ' . $a['enviados'] . ' enviado(s)' . ($a['falhas'] ? ', ' . $a['falhas'] . ' falha(s)' : '') . '.';
+        default: return 'Início ' . data_hora_curta($a['inicio']) . ', ' . $base . '.';
+    }
+}
+
 function camp_canal($c) { return $c['canal'] ?? 'whatsapp'; }
 function camp_do_grupo($gid, $canal = 'whatsapp') {
     if (!camp_v12() && $canal !== 'whatsapp') return null;
@@ -75,7 +121,7 @@ function camp_por_que_nao_aparece($c) {
     $hoje = date('Y-m-d'); $email = camp_canal($c) === 'email';
     if ($c['status'] === 'rascunho') return 'Ainda é rascunho: clique em "Salvar e liberar para envio".';
     if ($c['status'] === 'encerrada' || ($c['fim'] && $c['fim'] < $hoje)) return 'A campanha está encerrada (a data de encerramento já passou).';
-    if ($c['inicio'] && $c['inicio'] > $hoje) return 'Só aparece a partir de ' . data_br($c['inicio']) . ' (data de início).';
+    if (!camp_tem_agenda($c) && $c['inicio'] && $c['inicio'] > $hoje) return 'Só aparece a partir de ' . data_br($c['inicio']) . ' (data de início).';
     $n = camp_contagem($c);
     if (!$n['pendentes']) {
         if (!$n['total'] && !$n['sem_celular'] && !($n['sem_email'] ?? 0) && !$n['recusaram'] && !$n['sem_optin']) return 'O grupo não tem membros. Recalcule o grupo (regras) ou inclua os clientes na aba Membros.';

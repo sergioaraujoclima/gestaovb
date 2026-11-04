@@ -58,6 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $n = $pdo->prepare("DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND situacao = 'falhou'"); $n->execute([$cid]);
             flash($n->rowCount() . ' e-mail(s) com falha voltaram para a fila.'); ir($volta);
         }
+        // Disparo programado (e-mail): pausar e retomar sem perder a fila nem o cronograma.
+        if (($acao === 'camp_pausar' || $acao === 'camp_retomar') && $camp && function_exists('camp_tem_agenda') && camp_tem_agenda($camp)) {
+            $pdo->prepare('UPDATE crm_campanhas SET auto_envio = ?, atualizado_em = ? WHERE id = ?')->execute([$acao === 'camp_retomar' ? 1 : 0, $agora, $cid]);
+            registrar_log('campanha', $cid, $acao === 'camp_retomar' ? 'Disparo retomado' : 'Disparo pausado', $camp['titulo']);
+            flash($acao === 'camp_retomar' ? 'Disparo retomado: os e-mails voltam a sair no intervalo configurado.' : 'Disparo pausado. A fila fica guardada; retome quando quiser.');
+            ir($volta);
+        }
         if ($acao === 'camp_encerrar' && $camp) {
             $pdo->prepare("UPDATE crm_campanhas SET status = 'encerrada', atualizado_em = ? WHERE id = ?")->execute([$agora, $cid]);
             $pdo->prepare("UPDATE ia_cartoes SET status = 'feita', resolvido_por = ?, resolvido_em = ?, comentario = COALESCE(comentario, 'Campanha encerrada') WHERE chave LIKE ? AND status IN ('nova', 'andamento')")->execute([$quem, $agora, 'campanha:' . $cid . ':%']);
@@ -83,6 +90,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'inicio' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['inicio'] ?? '') ? $_POST['inicio'] : date('Y-m-d'),
                 'fim' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['fim'] ?? '') ? $_POST['fim'] : null];
             if ($acao === 'camp_liberar' && ($d['assunto'] === '' || trim(strip_tags($d['html'])) === '')) { flash('Preencha o assunto e o texto do e-mail antes de liberar.', 'erro'); ir($volta); }
+            // Calibragem do disparo: início do primeiro envio e intervalo em minutos (mínimo 2). Com ela, o envio é automático.
+            if (function_exists('camp_v13') && camp_v13()) {
+                $di = preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $_POST['disparo_inicio'] ?? '') ? str_replace('T', ' ', $_POST['disparo_inicio']) . ':00' : null;
+                $dv = (int)($_POST['disparo_intervalo'] ?? 0);
+                if ($acao === 'camp_liberar' && (!$di || $dv < 2)) { flash('Antes de liberar, defina a calibragem do disparo: data e hora do primeiro envio e o intervalo (mínimo 2 minutos).', 'erro'); ir($volta); }
+                if ($di !== null || $dv) {
+                    if ($dv < 2) { flash('O intervalo entre os e-mails precisa ser de pelo menos 2 minutos.', 'erro'); ir($volta); }
+                    if ($di && $acao === 'camp_liberar' && strtotime($di) < time() - 300 && (!$camp || $camp['disparo_inicio'] !== $di)) $di = date('Y-m-d H:i:00');   // início no passado: começa agora
+                    // Disparo já em andamento e o intervalo mudou: o novo ritmo vale a partir de agora (sem rajada nem espera para "compensar").
+                    if ($camp && camp_tem_agenda($camp) && strtotime($camp['disparo_inicio']) <= time() && $di && strtotime($di) <= time() && (int)$camp['disparo_intervalo'] !== min(1440, $dv)) $di = date('Y-m-d H:i:s');
+                    $d['disparo_inicio'] = $di; $d['disparo_intervalo'] = min(1440, $dv);
+                    $d['inicio'] = $di ? substr($di, 0, 10) : $d['inicio'];
+                    $d['auto_envio'] = ($camp && camp_tem_agenda($camp) && empty($camp['auto_envio']) && $camp['status'] === 'liberada') ? 0 : 1;   // pausado continua pausado
+                }
+            }
             if ($d['fim'] && $d['fim'] < $d['inicio']) $d['fim'] = null;
             try {
                 if (!$camp) {
@@ -96,7 +118,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($acao === 'camp_liberar') { $d['status'] = 'liberada'; if ($camp['status'] !== 'liberada') { $d['liberada_por'] = $quem; $d['liberada_em'] = $agora; } }
                 $pdo->prepare('UPDATE crm_campanhas SET ' . implode(' = ?, ', array_keys($d)) . ' = ? WHERE id = ?')->execute(array_merge(array_values($d), [$cid]));
             } catch (Throwable $ex) { flash('O e-mail não foi salvo: ' . $ex->getMessage(), 'erro'); ir($volta); }
-            registrar_log('campanha', $cid, $acao === 'camp_liberar' ? 'Campanha de e-mail liberada para envio' : 'E-mail da campanha salvo', $d['titulo'] . ' · assunto: ' . $d['assunto']);
+            registrar_log('campanha', $cid, $acao === 'camp_liberar' ? 'Campanha de e-mail liberada para envio' : 'E-mail da campanha salvo', $d['titulo'] . ' · assunto: ' . $d['assunto']
+                . (!empty($d['disparo_inicio']) ? ' · disparo a partir de ' . date('d/m/Y H:i', strtotime($d['disparo_inicio'])) . ', a cada ' . $d['disparo_intervalo'] . ' min' : ''));
+            if (!empty($d['disparo_inicio']) && ($ag = camp_agenda(camp_por_id($cid)))) {
+                $pq = $acao === 'camp_liberar' ? camp_por_que_nao_aparece(camp_por_id($cid)) : null;
+                if ($acao === 'camp_liberar' && function_exists('ia_gerar_alertas')) ia_gerar_alertas(true);
+                flash(($acao === 'camp_liberar' ? 'E-mail liberado com disparo programado. ' : 'E-mail salvo. ') . $ag['pendentes'] . ' cliente(s) com e-mail serão atingidos'
+                    . ($ag['pendentes'] ? ': primeiro envio ' . data_hora_curta($ag['proximo']) . ', um a cada ' . $ag['intervalo'] . ' min, término previsto ' . data_hora_curta($ag['fim']) . '.' : '.')
+                    . ($pq ? ' Atenção: ' . $pq : ''), $pq || !$ag['pendentes'] ? 'erro' : 'ok');
+                ir($volta);
+            }
             if ($acao === 'camp_liberar' && function_exists('ia_gerar_alertas')) ia_gerar_alertas(true);
             if ($acao === 'camp_liberar' && ($pq = camp_por_que_nao_aparece(camp_por_id($cid)))) { flash('E-mail liberado, mas ainda não aparece em Alertas e sugestões: ' . $pq, 'erro'); ir($volta); }
             flash($acao === 'camp_liberar' ? 'E-mail liberado. O envio aparece em Sugestões da IA › Alertas e sugestões' . ($d['auto_envio'] ? ' e também sai sozinho, em lotes, pelo agendamento' : '') . '.' : 'E-mail salvo como rascunho.');

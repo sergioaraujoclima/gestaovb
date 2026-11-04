@@ -175,6 +175,26 @@ function email_lote($c, $max = 25, $quem = null) {
     return [$ok, $fal, $rest, $rest ? ($fal && !$ok ? 'falha' : ($ok + $fal >= $cabe && $cabe < $max ? 'limite' : 'ok')) : 'fim'];
 }
 
+// ---------- Disparo programado (calibragem) ----------
+// Envia o que já está "vencido" no cronograma: 1 e-mail no início e mais 1 a cada intervalo. Chamado pelo cron (modo emails).
+// Se o cron rodar a cada 15 min com intervalo de 2 min, cada rodada envia os ~7 que venceram, com uma pausa curta entre eles.
+function email_agendados_processar($maxTotal = 60, $quem = 'Sistema (automático)') {
+    if (!camp_v13()) return [];
+    $r = []; $hoje = date('Y-m-d');
+    foreach (ia_q("SELECT c.*, g.nome grupo_nome FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id WHERE c.canal = 'email' AND c.status = 'liberada' AND c.auto_envio = 1 AND c.disparo_inicio IS NOT NULL AND c.disparo_inicio <= ? ORDER BY c.disparo_inicio", [date('Y-m-d H:i:s')]) as $c) {
+        if ($maxTotal <= 0) break;
+        if ($c['fim'] && $c['fim'] < $hoje) continue;
+        $a = camp_agenda($c); if (!$a || !$a['pendentes']) continue;
+        $devidos = (int)floor((time() - $a['inicio']) / ($a['intervalo'] * 60)) + 1 - $a['feitos'];
+        $qtd = min($devidos, $maxTotal, email_restante_hora());
+        if ($qtd <= 0) { $r[] = $c['titulo'] . ': nada vencido agora' . (email_restante_hora() <= 0 ? ' (limite da hora atingido)' : ''); continue; }
+        [$ok, $fal, $rest] = email_lote($c, $qtd, $quem);
+        $maxTotal -= $ok + $fal;
+        $r[] = $c['titulo'] . ": $ok enviado(s), $fal falha(s), $rest na fila";
+    }
+    return $r;
+}
+
 // ---------- Diagnóstico (Configuração › E-mail) ----------
 // Consulta o DNS do domínio do remetente a partir do próprio servidor: MX (quem recebe), SPF, DKIM e DMARC (o que os provedores conferem).
 function email_diagnostico() {

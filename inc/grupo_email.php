@@ -8,6 +8,16 @@ $ce = $campE ? camp_contagem($campE) : null;
 $podeCamp = pode_gerir_grupos();
 $histE = $pdo->query("SELECT * FROM crm_campanhas WHERE grupo_id = " . (int)$ver['id'] . " AND canal = 'email' AND status = 'encerrada' ORDER BY id DESC LIMIT 10")->fetchAll();
 $pct = fn($a, $b) => $b ? round($a * 100 / $b) . '%' : '—';
+// Calibragem: quantos clientes com e-mail seriam atingidos (com e sem "só quem autorizou"), para a previsão ao vivo.
+$v13 = function_exists('camp_v13') && camp_v13();
+$agE = $campE && $v13 ? camp_agenda($campE, $ce) : null;
+$alvo = ['todos' => 0, 'optin' => 0];
+if ($v13) {
+    $base = ['id' => (int)($campE['id'] ?? 0), 'grupo_id' => (int)$ver['id']];
+    $alvo['todos'] = count(camp_publico_email($base + ['so_optin' => 0])['fila']);
+    $alvo['optin'] = count(camp_publico_email($base + ['so_optin' => 1])['fila']);
+}
+$cronCmd = 'php ' . dirname(__DIR__) . '/cron_ia.php emails';
 $previa = null;
 if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = email_montar($campE, ['id' => 0, 'nome' => 'Maria da Silva', 'tipo_pessoa' => 'PF', 'cidade' => 'Brasília'], false); }
 ?>
@@ -44,10 +54,52 @@ if ($campE && ($campE['html'] || $campE['assunto'])) { [$asPrev, $previa] = emai
       <label class="l2">Botão principal · texto<input name="botao_texto" maxlength="80" placeholder="ex.: Quero o meu kit" value="<?= e($campE['botao_texto'] ?? '') ?>"></label>
       <label class="l2">Botão principal · link<input name="botao_link" maxlength="300" placeholder="https://..." value="<?= e($campE['botao_link'] ?? '') ?>"></label>
       <label class="check l2"><input type="checkbox" name="so_optin" <?= !empty($campE['so_optin']) ? 'checked' : '' ?>> Só quem autorizou e-mail de marketing</label>
+      <?php if (!$v13): ?>
       <label class="check l2"><input type="checkbox" name="auto_envio" <?= !empty($campE['auto_envio']) ? 'checked' : '' ?>> Enviar sozinho, em lotes, pelo agendamento (sem ninguém precisar clicar)</label>
       <label>Começar em<input type="date" name="inicio" value="<?= e($campE['inicio'] ?? date('Y-m-d')) ?>"></label>
+      <?php endif; ?>
       <label>Encerrar em (opcional)<input type="date" name="fim" value="<?= e($campE['fim'] ?? '') ?>"></label>
     </div>
+    <?php if ($v13): $diVal = $campE && $campE['disparo_inicio'] ? date('Y-m-d\TH:i', strtotime($campE['disparo_inicio'])) : ''; ?>
+    <fieldset class="calibra" id="calibragem">
+      <legend>Calibragem do disparo</legend>
+      <p class="sub">Os e-mails saem sozinhos, um de cada vez: o primeiro na data e hora de início e os seguintes a cada intervalo. Obrigatório para liberar o envio.</p>
+      <div class="grade">
+        <label>Iniciar disparo em<input type="datetime-local" name="disparo_inicio" id="cal-ini" value="<?= e($diVal) ?>"></label>
+        <label>Intervalo entre e-mails (minutos)<input type="number" name="disparo_intervalo" id="cal-int" min="2" max="1440" step="1" value="<?= e((string)($campE['disparo_intervalo'] ?? 5)) ?>"></label>
+        <div class="l2 cal-prev" id="cal-prev" aria-live="polite"></div>
+      </div>
+      <?php if ($agE): ?><p class="cal-status st-<?= e($agE['situacao']) ?>"><strong><?= e(camp_agenda_rotulo($agE['situacao'])) ?>:</strong> <?= e(camp_agenda_resumo($agE)) ?>
+        <?php if (in_array($agE['situacao'], ['enviando', 'programada'], true)): ?><button class="peq sec" name="acao" value="camp_pausar" formnovalidate>Pausar disparo</button><?php elseif ($agE['situacao'] === 'pausada'): ?><button class="peq" name="acao" value="camp_retomar" formnovalidate>Retomar disparo</button><?php endif; ?></p>
+        <?php if ($agE['cron_parado']): ?><p class="aviso erro">O disparo deveria estar andando, mas a tarefa agendada não roda há mais de 40 minutos<?= $agE['cron'] ? ' (última vez: ' . e(data_hora_curta($agE['cron'])) . ')' : ' (nunca rodou)' ?>. Confira no cPanel › Trabalhos Cron a linha <code><?= e($cronCmd) ?></code> a cada 15 minutos.</p><?php endif; ?>
+      <?php endif; ?>
+      <details class="dicas"><summary>Como o disparo acontece</summary><ul>
+        <li>Quem envia é a tarefa agendada do servidor (cPanel › <strong>Trabalhos Cron</strong>), com a linha <code>*/15 * * * * <?= e($cronCmd) ?></code>. A cada rodada ela envia os e-mails que já "venceram" no cronograma; com intervalo de 2 minutos, saem uns 7 por rodada, com uma pausa curta entre eles. O ritmo médio e o término previsto seguem a calibragem.</li>
+        <li>O limite de e-mails por hora (Sugestões da IA › Configuração) continua valendo: se a calibragem pedir mais do que o limite, o disparo segura e continua na hora seguinte.</li>
+        <li>Quem entra no grupo depois de começar também recebe, no fim da fila. Quem se descadastra sai na hora.</li>
+      </ul></details>
+    </fieldset>
+    <script>
+    (function () {
+      var N = <?= json_encode($alvo) ?>, ini = document.getElementById('cal-ini'), iv = document.getElementById('cal-int'), out = document.getElementById('cal-prev'),
+          opt = document.querySelector('#form-email [name=so_optin]');
+      function fmt(d) { var p = function (x) { return ('0' + x).slice(-2); }; return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' às ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+      function dur(min) { var h = Math.floor(min / 60), m = Math.round(min % 60); return (h ? h + ' h ' : '') + (m || !h ? m + ' min' : ''); }
+      function calc() {
+        var n = opt && opt.checked ? N.optin : N.todos, m = Math.max(2, parseInt(iv.value, 10) || 0);
+        if (!n) { out.innerHTML = '<strong>0 clientes com e-mail</strong> seriam atingidos neste grupo.'; return; }
+        if (!ini.value) { out.innerHTML = '<strong>' + n + ' cliente(s) com e-mail</strong> serão atingidos. Informe a data e a hora de início para ver quando termina.'; return; }
+        var a = new Date(ini.value), agora = new Date(), jaComecou = a < agora;
+        if (jaComecou) a = agora;   // disparo em andamento (ou início no passado): conta a partir de agora
+        var f = new Date(a.getTime() + (n - 1) * m * 60000);
+        out.innerHTML = '<strong>' + n + ' cliente(s) com e-mail</strong> ' + (jaComecou ? 'ainda na fila' : 'serão atingidos') + ' · ' + (jaComecou ? 'a partir de agora' : 'primeiro envio ' + fmt(a)) + ' · último por volta de <strong>' + fmt(f) + '</strong> (' + dur((n - 1) * m) + ' de disparo, ' + Math.floor(60 / m) + ' por hora)';
+      }
+      [ini, iv].forEach(function (x) { x.addEventListener('input', calc); });
+      if (opt) opt.addEventListener('change', calc);
+      calc();
+    })();
+    </script>
+    <?php endif; ?>
     <div class="acoes" style="flex-wrap:wrap;margin-top:12px">
       <button class="sec" name="acao" value="camp_salvar">Salvar rascunho</button>
       <button name="acao" value="camp_liberar" onclick="return confirm('Liberar este e-mail para envio?')"><?= ($campE['status'] ?? '') === 'liberada' ? 'Salvar alterações (já liberado)' : 'Salvar e liberar para envio' ?></button>

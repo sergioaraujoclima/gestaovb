@@ -380,3 +380,11 @@ input[type=color]{height:40px;padding:3px;cursor:pointer}
 .camp-teste{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
 .camp-teste input{width:240px;max-width:100%}
 .camp-ir .btn{margin-left:8px}
+/* v9.15 · calibragem do disparo de e-mail */
+.calibra{border:1px solid var(--borda);border-radius:8px;padding:12px 14px;margin:14px 0 4px}
+.calibra legend{font-weight:600;color:var(--vinho);padding:0 6px}
+.cal-prev{align-self:end;background:#f4eee8;border-radius:6px;padding:10px 12px;font-size:14px}
+.cal-status{margin:12px 0 0;font-size:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cal-status.st-pausada strong{color:var(--pend)}.cal-status.st-enviando strong{color:var(--ok)}
+.ia-agenda{background:#f4eee8;border-radius:6px;padding:8px 10px;font-size:14px;margin:8px 0}
+.ia-agenda strong{color:var(--vinho)}

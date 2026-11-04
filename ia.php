@@ -108,7 +108,15 @@ function ia_render_cartao($c, $aba, $tiposMarketing) {
     if ($c['texto']) $h .= '<p class="ia-texto">' . nl2br(e($c['texto'])) . '</p>';
     if ($c['tipo'] === 'campanha' && !empty($d['campanha_id']) && function_exists('camp_v11') && camp_v11() && ($cp = camp_por_id($d['campanha_id']))) {
         $n = camp_contagem($cp);
-        if (camp_canal($cp) === 'email') {
+        $agC = camp_canal($cp) === 'email' && function_exists('camp_agenda') && camp_v13() ? camp_agenda($cp, $n) : null;
+        if ($agC) {   // disparo calibrado: só o resumo e o status (quem envia é a tarefa agendada)
+            $h .= '<div class="ia-camp"><div class="em-resumo"><span class="chip">✉️ E-mail</span><strong>' . e($cp['assunto']) . '</strong></div></div>'
+                . '<div class="disp-prog"><span style="width:' . ($n['total'] ? round(($n['total'] - $n['pendentes']) * 100 / $n['total']) : 0) . '%"></span></div>'
+                . '<p class="ia-agenda"><strong>' . e(camp_agenda_rotulo($agC['situacao'])) . ':</strong> ' . e(camp_agenda_resumo($agC)) . ($n['aberturas'] ? ' · ' . $n['aberturas'] . ' abriram' : '') . ($n['cliques'] ? ' · ' . $n['cliques'] . ' clicaram' : '') . '</p>'
+                . ($agC['cron_parado'] ? '<p class="aviso erro">A tarefa agendada do servidor não roda há mais de 40 minutos: o disparo está parado. Avise o administrador (cPanel › Trabalhos Cron).</p>' : '')
+                . '<p class="acoes"><a class="btn peq sec" href="ia_email.php?c=' . (int)$cp['id'] . '">Acompanhar envio</a>' . (pode_gerir_grupos() ? '<a class="btn peq sec" href="crm_grupos.php?ver=' . (int)$cp['grupo_id'] . '&aba=email#calibragem">Calibragem</a>' : '') . '</p>';
+            $c['link'] = null;
+        } elseif (camp_canal($cp) === 'email') {
             $h .= '<div class="ia-camp">' . ($cp['imagem'] ? '<img src="' . e(camp_url_imagem($cp)) . '" alt="">' : '') . '<div class="em-resumo"><span class="chip">✉️ E-mail</span><strong>' . e($cp['assunto']) . '</strong><span class="det-rk">' . e($cp['preheader']) . '</span></div></div>'
                 . '<div class="disp-prog"><span style="width:' . ($n['total'] ? round(($n['total'] - $n['pendentes']) * 100 / $n['total']) : 0) . '%"></span></div>'
                 . '<p class="ia-prog">' . $n['enviados'] . ' enviado(s) · ' . $n['pendentes'] . ' na fila · ' . $n['aberturas'] . ' abriram · ' . $n['cliques'] . ' clicaram' . ($n['falhas'] ? ' · ' . $n['falhas'] . ' falha(s)' : '') . '</p>'

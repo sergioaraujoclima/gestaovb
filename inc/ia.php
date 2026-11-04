@@ -431,10 +431,18 @@ function ia_r_campanhas() {
             db()->prepare("UPDATE crm_campanhas SET status = 'encerrada', atualizado_em = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $c['id']]);
             continue;
         }
-        if ($c['inicio'] && $c['inicio'] > $hoje) continue;
+        $ag = function_exists('camp_agenda') && camp_v13() ? camp_agenda($c) : null;   // e-mail com calibragem: o cartão só mostra o status
+        if (!$ag && $c['inicio'] && $c['inicio'] > $hoje) continue;
         $n = camp_contagem($c);
         if (!$n['pendentes']) continue;
         $email = camp_canal($c) === 'email';
+        if ($ag) {
+            ia_cartao(['chave' => 'campanha:' . $c['id'] . ':' . $hoje, 'area' => $c['area'], 'tipo' => 'campanha', 'prioridade' => $ag['situacao'] === 'pausada' ? 'baixa' : 'media',
+                'titulo' => 'E-mail "' . $c['titulo'] . '": ' . mb_strtolower(camp_agenda_rotulo($ag['situacao'])) . ' · ' . $ag['pendentes'] . ' na fila',
+                'texto' => 'Grupo ' . $c['grupo_nome'] . '. Disparo automático calibrado: um e-mail a cada ' . $ag['intervalo'] . ' min.',
+                'dados' => ['campanha_id' => (int)$c['id']], 'link' => 'ia_email.php?c=' . $c['id'], 'valido_ate' => $hoje]);
+            continue;
+        }
         ia_cartao(['chave' => 'campanha:' . $c['id'] . ':' . $hoje, 'area' => $c['area'], 'tipo' => 'campanha', 'prioridade' => 'media',
             'titulo' => ($email ? 'E-mail "' : 'WhatsApp "') . $c['titulo'] . '": ' . $n['pendentes'] . ' cliente(s) para enviar',
             'texto' => 'Grupo ' . $c['grupo_nome'] . ($c['fim'] ? ' · até ' . data_br($c['fim']) : '') . '. ' . ($email
