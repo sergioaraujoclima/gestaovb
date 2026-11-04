@@ -388,3 +388,21 @@ input[type=color]{height:40px;padding:3px;cursor:pointer}
 .cal-status.st-pausada strong{color:var(--pend)}.cal-status.st-enviando strong{color:var(--ok)}
 .ia-agenda{background:#f4eee8;border-radius:6px;padding:8px 10px;font-size:14px;margin:8px 0}
 .ia-agenda strong{color:var(--vinho)}
+/* v9.16 · resumo de campanhas em Alertas e sugestões */
+.cp-resumo{background:#fff;border:1px solid var(--borda);border-left:4px solid var(--vinho);border-radius:8px;padding:12px 14px;margin:0 0 16px}
+.cp-topo{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+.cp-topo h2{margin:0;font-size:17px}.cp-topo h2 small{font-weight:400;color:#766;font-size:13px}
+.cp-totais{display:flex;gap:6px 16px;flex-wrap:wrap;font-size:14px;align-items:center}
+.cp-totais span{display:inline-flex;align-items:center;gap:5px}.cp-totais strong{font-size:16px}
+.cp-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:10px}
+.cp-item{border:1px solid #efe8e1;border-radius:8px;padding:10px 12px;background:#fdfbf9}
+.cp-item header{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:6px;flex-wrap:wrap}
+.cp-nome{font-weight:600;color:var(--vinho)}.cp-num{font-size:13px;color:#655}.cp-num strong{font-size:18px;color:var(--txt)}
+.cp-canal{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:13px;color:var(--txt);text-decoration:none;flex-wrap:wrap}
+a.cp-canal:hover span{text-decoration:underline}
+.cp-canal strong{font-size:16px;min-width:1.5em}.cp-canal span{color:#655}
+.cp-canal.vazio{color:#988}.cp-canal.vazio .ic-canal{opacity:.35}
+.cp-sit{font-style:normal;font-size:11px;padding:1px 7px;border-radius:10px;background:#eee9e3;color:#655;margin-left:auto}
+.cp-sit.s-enviando{background:#e4f2e7;color:var(--ok)}.cp-sit.s-programada{background:#e6eef8;color:#2f5f8a}.cp-sit.s-pausada{background:#fdeed6;color:var(--pend)}.cp-sit.s-liberada{background:#f6e9ee;color:var(--vinho)}
+.ic-canal{width:18px;height:18px;flex:none;vertical-align:middle}
+.ic-wa{color:#1f9d55}.ic-email{color:#2f6fae}

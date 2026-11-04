@@ -71,6 +71,70 @@ function camp_agenda_resumo($a) {
     }
 }
 
+// v14: histórico permanente (crm_campanha_eventos). Sem a migração, nada é gravado e nada quebra.
+function camp_v14() {
+    static $ok = null;
+    if ($ok === null) {
+        try { db()->query('SELECT 1 FROM crm_campanha_eventos WHERE 1 = 0'); $ok = true; }
+        catch (Throwable $ex) { $ok = false; }
+    }
+    return $ok;
+}
+// Registra um acontecimento de campanha. Nunca interrompe o envio: se falhar, só deixa de registrar.
+function camp_evento($c, $cliId, $evento, $quem = null, $detalhe = null) {
+    if (!$c || !camp_v14()) return;
+    static $grupos = [];
+    $gid = (int)($c['grupo_id'] ?? 0);
+    if (!isset($grupos[$gid])) { $s = db()->prepare('SELECT nome FROM crm_grupos WHERE id = ?'); $s->execute([$gid]); $grupos[$gid] = $s->fetchColumn() ?: ($c['grupo_nome'] ?? null); }
+    try {
+        db()->prepare('INSERT INTO crm_campanha_eventos (campanha_id, grupo_id, canal, campanha_titulo, grupo_nome, cliente_id, evento, em, por, detalhe) VALUES (?,?,?,?,?,?,?,?,?,?)')
+            ->execute([(int)$c['id'], $gid ?: null, camp_canal($c), mb_substr((string)($c['titulo'] ?? ''), 0, 120), $grupos[$gid] ? mb_substr($grupos[$gid], 0, 80) : null,
+                $cliId ? (int)$cliId : null, $evento, date('Y-m-d H:i:s'), $quem !== null ? mb_substr($quem, 0, 120) : ($GLOBALS['USUARIO']['nome'] ?? null), $detalhe !== null ? mb_substr($detalhe, 0, 200) : null]);
+    } catch (Throwable $ex) {}
+}
+
+// Resumo para o topo de Alertas e sugestões: campanhas liberadas e as que tiveram movimento nos últimos $dias,
+// agrupadas por grupo (a mesma "campanha" pode ter WhatsApp e e-mail). Números do estado atual (envios valendo).
+function camp_painel($areas, $dias = 30) {
+    if (!$areas || !camp_v11()) return null;
+    $desde = date('Y-m-d H:i:s', strtotime("-$dias days"));
+    $in = implode(',', array_fill(0, count($areas), '?'));
+    $cs = ia_q("SELECT c.*, g.nome grupo_nome FROM crm_campanhas c JOIN crm_grupos g ON g.id = c.grupo_id
+        WHERE c.area IN ($in) AND (c.status = 'liberada' OR EXISTS (SELECT 1 FROM crm_campanha_envios e WHERE e.campanha_id = c.id AND e.em >= ?))
+        ORDER BY c.status = 'liberada' DESC, c.id DESC", array_merge($areas, [$desde]));
+    if (!$cs) return ['grupos' => [], 'total' => ['clientes' => 0, 'whatsapp' => 0, 'email' => 0, 'abertos' => 0, 'cliques' => 0], 'dias' => $dias];
+    $ids = implode(',', array_map(fn($c) => (int)$c['id'], $cs));
+    $v12 = camp_v12();
+    $porCamp = [];
+    foreach (ia_q("SELECT campanha_id, COUNT(DISTINCT CASE WHEN situacao = 'enviado' THEN cliente_id END) env"
+        . ($v12 ? ", COUNT(DISTINCT CASE WHEN aberto_em IS NOT NULL THEN cliente_id END) ab, COUNT(DISTINCT CASE WHEN clicado_em IS NOT NULL THEN cliente_id END) cl" : ', 0 ab, 0 cl')
+        . " FROM crm_campanha_envios WHERE campanha_id IN ($ids) GROUP BY campanha_id") as $r) $porCamp[(int)$r['campanha_id']] = $r;
+    $g = [];
+    foreach ($cs as $c) {
+        $gid = (int)$c['grupo_id']; $canal = camp_canal($c);
+        $g[$gid] = $g[$gid] ?? ['grupo_id' => $gid, 'grupo' => $c['grupo_nome'], 'clientes' => 0, 'whatsapp' => null, 'email' => null];
+        if ($g[$gid][$canal]) continue;   // vale a mais recente de cada canal
+        $x = $porCamp[(int)$c['id']] ?? ['env' => 0, 'ab' => 0, 'cl' => 0];
+        $n = camp_contagem($c);
+        $ag = $canal === 'email' && function_exists('camp_v13') && camp_v13() ? camp_agenda($c, $n) : null;
+        $sit = $ag ? $ag['situacao'] : ($c['status'] !== 'liberada' ? $c['status'] : ($n['pendentes'] ? ($c['inicio'] && $c['inicio'] > date('Y-m-d') ? 'programada' : 'liberada') : 'concluida'));
+        $g[$gid][$canal] = ['id' => (int)$c['id'], 'titulo' => $c['titulo'], 'enviados' => (int)$x['env'], 'abertos' => (int)$x['ab'], 'cliques' => (int)$x['cl'],
+            'fila' => (int)$n['pendentes'], 'situacao' => $sit, 'fim' => $ag['fim'] ?? null];
+    }
+    // Clientes únicos atingidos por grupo (quem recebeu pelos dois canais conta uma vez).
+    foreach (ia_q("SELECT c.grupo_id, COUNT(DISTINCT e.cliente_id) n FROM crm_campanha_envios e JOIN crm_campanhas c ON c.id = e.campanha_id WHERE e.campanha_id IN ($ids) AND e.situacao = 'enviado' GROUP BY c.grupo_id") as $r)
+        if (isset($g[(int)$r['grupo_id']])) $g[(int)$r['grupo_id']]['clientes'] = (int)$r['n'];
+    $tot = ia_q("SELECT COUNT(DISTINCT e.cliente_id) n FROM crm_campanha_envios e WHERE e.campanha_id IN ($ids) AND e.situacao = 'enviado'")[0]['n'] ?? 0;
+    $t = ['clientes' => (int)$tot, 'whatsapp' => 0, 'email' => 0, 'abertos' => 0, 'cliques' => 0];
+    foreach ($g as $x) { $t['whatsapp'] += $x['whatsapp']['enviados'] ?? 0; $t['email'] += $x['email']['enviados'] ?? 0; $t['abertos'] += $x['email']['abertos'] ?? 0; $t['cliques'] += $x['email']['cliques'] ?? 0; }
+    return ['grupos' => array_values($g), 'total' => $t, 'dias' => $dias];
+}
+function icone_canal($canal) {   // ícones simples (balão de conversa e envelope), sem marca
+    return $canal === 'email'
+        ? '<svg class="ic-canal ic-email" viewBox="0 0 24 24" aria-label="E-mail" role="img"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="currentColor"/><path d="M4 7.2l8 5.6 8-5.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg class="ic-canal ic-wa" viewBox="0 0 24 24" aria-label="WhatsApp" role="img"><path d="M4 4.5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H10l-4.5 3.5V17.5H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z" fill="currentColor"/><circle cx="8" cy="11" r="1.3" fill="#fff"/><circle cx="12" cy="11" r="1.3" fill="#fff"/><circle cx="16" cy="11" r="1.3" fill="#fff"/></svg>';
+}
+
 function camp_canal($c) { return $c['canal'] ?? 'whatsapp'; }
 function camp_do_grupo($gid, $canal = 'whatsapp') {
     if (!camp_v12() && $canal !== 'whatsapp') return null;

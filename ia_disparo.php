@@ -24,12 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['ok' => $ok, 'msg' => $msg, 'em' => date('d/m H:i')], JSON_UNESCAPED_UNICODE);
         exit;
     }
-    if ($sit === 'desfazer') $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli]);
+    if ($sit === 'desfazer') { $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli]); camp_evento($c, $cli, 'desfeito', $quem, 'marcação desfeita na fila de envio'); }
     elseif (in_array($sit, ['enviado', 'pulado'], true)) {
         $s = $pdo->prepare('SELECT 1 FROM crm_grupo_membros WHERE grupo_id = ? AND cliente_id = ?'); $s->execute([$c['grupo_id'], $cli]);
         if (!$s->fetchColumn()) { echo '{"ok":false}'; exit; }
         $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli]);
         $pdo->prepare('INSERT INTO crm_campanha_envios (campanha_id, cliente_id, situacao, em, por) VALUES (?,?,?,?,?)')->execute([$c['id'], $cli, $sit, date('Y-m-d H:i:s'), $quem]);
+        camp_evento($c, $cli, $sit, $quem, 'fila de envio do WhatsApp');
         if ($sit === 'enviado') {
             $pdo->prepare('UPDATE clientes SET ultima_interacao = ? WHERE id = ? AND (ultima_interacao IS NULL OR ultima_interacao < ?)')->execute([date('Y-m-d'), $cli, date('Y-m-d')]);
             $pdo->prepare("UPDATE ia_cartoes SET status = 'andamento', atualizado_em = ? WHERE chave = ? AND status = 'nova'")->execute([date('Y-m-d H:i:s'), 'campanha:' . $c['id'] . ':' . date('Y-m-d')]);

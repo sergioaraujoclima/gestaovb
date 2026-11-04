@@ -163,6 +163,7 @@ function email_lote($c, $max = 25, $quem = null) {
         if (!$res && !$erro) $erro = 'o servidor de e-mail recusou o envio';
         $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli['id']]);
         $ins->execute([$c['id'], $cli['id'], $res ? 'enviado' : 'falhou', date('Y-m-d H:i:s'), $quem, $erro ? mb_substr($erro, 0, 200) : null]);
+        camp_evento($c, $cli['id'], $res ? 'enviado' : 'falhou', $quem, $erro ? mb_substr('lote · ' . $erro, 0, 200) : (camp_tem_agenda($c) ? 'disparo programado' : 'lote'));
         $res ? $ok++ : $fal++;
         if ($erro && stripos($erro, 'MAIL_ATIVO') !== false) break;
         usleep(150000);   // um respiro entre envios para não sobrecarregar o servidor de e-mail
@@ -242,6 +243,7 @@ function email_individual($c, $cliId, $quem) {
     $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$c['id'], $cli['id']]);
     $pdo->prepare('INSERT INTO crm_campanha_envios (campanha_id, cliente_id, situacao, em, por, erro) VALUES (?,?,?,?,?,?)')
         ->execute([$c['id'], $cli['id'], $res ? 'enviado' : 'falhou', date('Y-m-d H:i:s'), $quem, $erro ? mb_substr($erro, 0, 200) : null]);
+    camp_evento($c, $cli['id'], $res ? 'enviado' : 'falhou', $quem, 'envio individual' . ($erro ? ' · ' . $erro : ''));
     registrar_log('campanha', $c['id'], 'E-mail individual', $cli['nome'] . ' <' . $cli['email'] . '>: ' . ($res ? 'enviado' : 'falhou (' . $erro . ')'));
     return [$res, $res ? 'enviado' : 'Falha no envio: ' . $erro];
 }

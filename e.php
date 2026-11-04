@@ -10,7 +10,8 @@ $c = null;
 if ($k !== '' && camp_v12()) { $s = db()->prepare('SELECT * FROM crm_campanhas WHERE token = ?'); $s->execute([$k]); $c = $s->fetch() ?: null; }
 $valido = $c && $cid && hash_equals(assinatura($a, $k, $cid, $url), $sig);
 $marcar = function ($col) use ($c, $cid) {
-    db()->prepare("UPDATE crm_campanha_envios SET $col = ? WHERE campanha_id = ? AND cliente_id = ? AND $col IS NULL")->execute([date('Y-m-d H:i:s'), $c['id'], $cid]);
+    $s = db()->prepare("UPDATE crm_campanha_envios SET $col = ? WHERE campanha_id = ? AND cliente_id = ? AND $col IS NULL"); $s->execute([date('Y-m-d H:i:s'), $c['id'], $cid]);
+    if ($s->rowCount()) camp_evento($c, $cid, $col === 'aberto_em' ? 'aberto' : 'clicado', 'O próprio cliente');   // só a primeira vez
 };
 
 if ($a === 'o') {   // pixel de abertura
@@ -32,6 +33,7 @@ if ($a === 'd') {   // descadastro: página personalizada (link do rodapé) e um
         registrar_log('cliente', $cid, $sair ? 'Descadastro de e-mail' : 'Descadastro de e-mail desfeito',
             ($sair ? 'Pelo link da campanha "' : 'O cliente pediu para continuar recebendo, na página da campanha "') . $c['titulo'] . '"', ['id' => null, 'nome' => 'O próprio cliente (link do e-mail)']);
         if (function_exists('grupos_recalcular_cliente')) grupos_recalcular_cliente($cid);
+        camp_evento($c, $cid, $sair ? 'descadastro' : 'recadastro', 'O próprio cliente', 'link do e-mail');
     };
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($_POST['pagina'])) { if ($valido) $mudar(true); http_response_code($valido ? 200 : 400); echo $valido ? 'ok' : 'invalido'; exit; }   // um clique (RFC 8058)

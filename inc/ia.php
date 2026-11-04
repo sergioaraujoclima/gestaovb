@@ -297,7 +297,7 @@ function ia_r_b2c() {
         'texto' => 'Uma mensagem no dia (com uma condição especial) costuma gerar visita ou compra. Quem recusou WhatsApp de marketing aparece marcado.'
             . ($campAniv ? "\nTexto: campanha \"" . $campAniv['titulo'] . '" (Grupos de campanha).' : "\nTexto: mensagem padrão de aniversário (Configuração). Crie uma campanha de WhatsApp num grupo de aniversariantes para usar o seu texto.")
             . ($campAnivEmail ? "\nE-mail: campanha \"" . $campAnivEmail['titulo'] . '".' : ''),
-        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)'), $campAniv ? camp_texto($campAniv, $c) : null), $aniv)] + ($campAnivEmail ? ['email_camp' => (int)$campAnivEmail['id']] : []),
+        'dados' => ['contatos' => array_map(fn($c) => ia_contato($c, 'msg_aniversario', [], date('d/m', strtotime($c['_d'])) . ($c['_f'] === 0 ? ' · hoje' : ' · em ' . $c['_f'] . ' dia(s)'), $campAniv ? camp_texto($campAniv, $c) : null), $aniv)] + ($campAnivEmail ? ['email_camp' => (int)$campAnivEmail['id']] : []) + ($campAniv ? ['wa_camp' => (int)$campAniv['id']] : []),
         'link' => 'crm_grupos.php', 'valido_ate' => $hoje]);
     if (!function_exists('vendas_v9') || !vendas_v9()) return;
     // Recompra: pessoas que compravam com frequência e sumiram.

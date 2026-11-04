@@ -23,6 +23,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $d = json_decode((string)$c['dados'], true) ?: [];
         if (!isset($d['contatos'][$i])) { echo '{"ok":false}'; exit; }
         $d['enviados'][$i] = ['em' => date('Y-m-d H:i:s'), 'por' => $quem];
+        // Mensagem com o texto de uma campanha (ex.: aniversariantes): conta como envio da campanha (fila e histórico).
+        if (!empty($d['wa_camp']) && function_exists('camp_por_id') && ($wc = camp_por_id($d['wa_camp'])) && camp_canal($wc) === 'whatsapp') {
+            $cliW = (int)$d['contatos'][$i]['cliente_id'];
+            $pdo->prepare('DELETE FROM crm_campanha_envios WHERE campanha_id = ? AND cliente_id = ?')->execute([$wc['id'], $cliW]);
+            $pdo->prepare("INSERT INTO crm_campanha_envios (campanha_id, cliente_id, situacao, em, por) VALUES (?,?,'enviado',?,?)")->execute([$wc['id'], $cliW, date('Y-m-d H:i:s'), $quem]);
+            camp_evento($wc, $cliW, 'enviado', $quem, 'cartão de ' . ($c['tipo'] === 'aniversario' ? 'aniversariantes' : $c['tipo']));
+        }
         $pdo->prepare('UPDATE ia_cartoes SET dados = ?, status = CASE WHEN status = \'nova\' THEN \'andamento\' ELSE status END, atualizado_em = ? WHERE id = ?')
             ->execute([json_encode($d, JSON_UNESCAPED_UNICODE), date('Y-m-d H:i:s'), $c['id']]);
         echo json_encode(['ok' => true, 'txt' => 'enviado ' . date('H:i') . ' · ' . $quem, 'feitos' => count($d['enviados']), 'total' => count($d['contatos'])], JSON_UNESCAPED_UNICODE);
@@ -186,6 +193,33 @@ require __DIR__ . '/inc/topo.php';
     <form method="post"><?= csrf_campo() ?><button class="peq sec" name="acao" value="gerar_alertas" title="Os alertas são atualizados sozinhos de hora em hora">Atualizar alertas</button></form>
   </div>
 </div>
+
+<?php $pc = function_exists('camp_painel') ? camp_painel(array_values(array_intersect($areasAba, ['b2c', 'b2b', 'enoturismo']))) : null;
+if ($pc && $pc['grupos']):
+  $sitRot = ['programada' => 'programado', 'enviando' => 'enviando', 'pausada' => 'pausado', 'concluida' => 'concluído', 'encerrada' => 'encerrado', 'rascunho' => 'rascunho', 'liberada' => 'pronto p/ enviar'];
+  $canalLinha = function ($x, $canal) use ($sitRot) {
+      if (!$x) return '<div class="cp-canal vazio">' . icone_canal($canal) . '<span>' . ($canal === 'email' ? 'sem e-mail nesta campanha' : 'sem WhatsApp nesta campanha') . '</span></div>';
+      $det = $canal === 'email' ? ($x['enviados'] ? ' · ' . $x['abertos'] . ' abriram · ' . $x['cliques'] . ' clicaram' : '') : '';
+      $link = $canal === 'email' ? 'ia_email.php?c=' . $x['id'] : 'ia_disparo.php?c=' . $x['id'];
+      return '<a class="cp-canal" href="' . $link . '" title="' . e($x['titulo']) . '">' . icone_canal($canal) . '<strong>' . $x['enviados'] . '</strong><span>' . ($canal === 'email' ? 'por e-mail' : 'por WhatsApp') . e($det)
+          . ($x['fila'] ? ' · ' . $x['fila'] . ' na fila' : '') . '</span><em class="cp-sit s-' . e($x['situacao']) . '">' . e($sitRot[$x['situacao']] ?? $x['situacao']) . '</em></a>';
+  }; ?>
+<section class="cp-resumo" aria-label="Resumo das campanhas">
+  <div class="cp-topo">
+    <h2>Campanhas <small>ativas e dos últimos <?= (int)$pc['dias'] ?> dias</small></h2>
+    <div class="cp-totais"><span><strong><?= $pc['total']['clientes'] ?></strong> cliente(s) atingido(s)</span><span><?= icone_canal('whatsapp') ?><strong><?= $pc['total']['whatsapp'] ?></strong> WhatsApp</span><span><?= icone_canal('email') ?><strong><?= $pc['total']['email'] ?></strong> e-mail<?= $pc['total']['email'] ? ' · ' . $pc['total']['abertos'] . ' abriram' : '' ?></span></div>
+  </div>
+  <div class="cp-grade">
+  <?php foreach ($pc['grupos'] as $gr): ?>
+    <article class="cp-item">
+      <header><span class="cp-nome"><?= e($gr['grupo']) ?></span><span class="cp-num"><strong><?= $gr['clientes'] ?></strong> cliente(s) atingido(s)</span></header>
+      <?= $canalLinha($gr['whatsapp'], 'whatsapp') ?>
+      <?= $canalLinha($gr['email'], 'email') ?>
+    </article>
+  <?php endforeach; ?>
+  </div>
+</section>
+<?php endif; ?>
 
 <?php if ($hist): ?>
 <h2>Histórico <small>últimos 60 dias · feitos, descartados e vencidos</small></h2>
