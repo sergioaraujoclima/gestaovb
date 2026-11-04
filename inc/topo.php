@@ -21,6 +21,11 @@ if (pode_ver_cd()) {
     $modulos['Centro de Distribuição'] = ['cd_painel.php' => 'Entregas do dia', 'cd_entregas.php' => 'Entregas'];
     if (pode_ver_cd_gestao()) $modulos['Centro de Distribuição'] += ['cd_extrato.php' => 'Extrato mensal', 'cd_vinicolas.php' => 'Vinícolas', 'cd_motoristas.php' => 'Motoristas'];
 }
+// Financeiro (e Gerente geral): extrato e baixa dos pagamentos das entregas, mesmo sem perfil do CD.
+if (function_exists('pode_ver_cd_pagamentos') && pode_ver_cd_pagamentos()) {
+    $modulos['Centro de Distribuição'] = ($modulos['Centro de Distribuição'] ?? []) + ['cd_extrato.php' => 'Extrato mensal'];
+    $modulos['Centro de Distribuição']['cd_pagamentos.php'] = 'Baixa Pagamentos Entregas';
+}
 if (eh_admin()) $modulos['Administração'] = ['usuarios.php' => 'Controle de acesso', 'auditoria.php' => 'Auditoria'];
 ?>
 <!doctype html>
@@ -29,7 +34,7 @@ if (eh_admin()) $modulos['Administração'] = ['usuarios.php' => 'Controle de ac
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($titulo ?? APP_NOME) ?> · <?= e(APP_NOME) ?></title>
-<link rel="stylesheet" href="assets/estilo.css?v=9.16">
+<link rel="stylesheet" href="assets/estilo.css?v=9.17">
 </head>
 <body>
 <div class="app">

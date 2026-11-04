@@ -2,7 +2,7 @@
 define('INICIO_PAGINA', microtime(true));
 require __DIR__ . '/config.php';
 define('APP_NOME', 'Gestão Vinícola Brasília');
-define('APP_VERSAO', '9.16');
+define('APP_VERSAO', '9.17');
 define('DIR_COMPROVANTES', dirname(__DIR__) . '/uploads/comprovantes');
 date_default_timezone_set('America/Sao_Paulo');
 
@@ -60,6 +60,7 @@ function lista_perfis() {
             'cadastrador' => 'Tour · Cadastrador', 'consulta_tour' => 'Tour · Consulta',
             'marketing' => 'CRM · Marketing', 'consulta_crm' => 'CRM · Consulta',
             'cadastrador_cd' => 'CD · Cadastrador', 'motorista_cd' => 'CD · Motorista', 'consulta_cd' => 'CD · Consulta',
+            'financeiro' => 'Financeiro',
             'gerente_geral' => 'Gerente geral', 'gerente_b2b' => 'Gerente comercial B2B', 'gerente_b2c' => 'Gerente comercial B2C', 'gerente_enoturismo' => 'Gerente de enoturismo e eventos'];
 }
 function perfil() { return (string)($GLOBALS['USUARIO']['perfil'] ?? ''); }
@@ -84,6 +85,7 @@ function pode_editar() { return tem_perfil('admin', 'cadastrador'); }
 function pagina_inicial() {
     if (pode_ver_tours()) return 'painel.php';
     if (pode_ver_cd()) return 'cd_painel.php';
+    if (tem_perfil('financeiro')) return 'cd_pagamentos.php';
     if (function_exists('pode_ver_crm') && pode_ver_crm()) return 'crm_painel.php';
     if (function_exists('pode_ver_ia') && pode_ver_ia()) return 'ia.php';
     return 'sair.php';
@@ -384,9 +386,11 @@ function enviar_extrato_cd($vinicolaId, $mes, $quem = null) {
     if ($ok) {
         db()->prepare('REPLACE INTO cd_extratos (vinicola_id, mes, qtd, total, enviado_em) VALUES (?,?,?,?,NOW())')
             ->execute([(int)$vinicolaId, $mes, $x['qtd'], $x['total']]);
+        if (function_exists('cd_v15') && cd_v15()) db()->prepare('UPDATE cd_cobrancas SET atualizado_em = ? WHERE vinicola_id = ? AND mes = ?')->execute([date('Y-m-d H:i:s'), (int)$vinicolaId, $mes]);
         registrar_log('vinicola', $vinicolaId, 'Extrato enviado', rotulo_mes($mes) . ': ' . $x['qtd'] . ' entrega(s), ' . brl($x['total']) . ' para ' . $v['email'], $quem);
     }
     return $ok;
 }
 
 require_once __DIR__ . '/crm.php';
+require_once __DIR__ . '/cd_financeiro.php';

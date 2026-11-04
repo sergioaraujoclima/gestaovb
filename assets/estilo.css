@@ -406,3 +406,16 @@ a.cp-canal:hover span{text-decoration:underline}
 .cp-sit.s-enviando{background:#e4f2e7;color:var(--ok)}.cp-sit.s-programada{background:#e6eef8;color:#2f5f8a}.cp-sit.s-pausada{background:#fdeed6;color:var(--pend)}.cp-sit.s-liberada{background:#f6e9ee;color:var(--vinho)}
 .ic-canal{width:18px;height:18px;flex:none;vertical-align:middle}
 .ic-wa{color:#1f9d55}.ic-email{color:#2f6fae}
+/* v9.17 · Baixa Pagamentos Entregas (CD · Financeiro) */
+form.inline{display:inline}
+table.cob td{white-space:normal;vertical-align:top}
+table.cob tr.vencida td:first-child{box-shadow:inset 3px 0 0 #a02020}
+table.cob tr.paga td{color:#5a5355}
+details.baixa summary{list-style:none;cursor:pointer;display:inline-block}
+details.baixa summary::-webkit-details-marker{display:none}
+details.baixa[open] summary{margin-bottom:8px}
+.baixa-form{min-width:280px;background:#faf6f2;border:1px solid var(--borda);border-radius:8px;padding:10px;grid-template-columns:1fr 1fr}
+.chip.area-financeiro{background:#e6f0ea;color:#24603a}
+.cob-filtro{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.cob-filtro select,.cob-filtro input{width:auto}
+table.cob td.num,table.cob .tag{white-space:nowrap}

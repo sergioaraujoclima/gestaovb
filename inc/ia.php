@@ -14,8 +14,12 @@ function ia_v10() {
     }
     return $ok;
 }
-function ia_areas() { return ['geral' => 'Gerente geral', 'b2b' => 'Comercial B2B', 'b2c' => 'Comercial B2C', 'enoturismo' => 'Enoturismo e eventos']; }
-function ia_perfil_area() { return ['gerente_geral' => 'geral', 'gerente_b2b' => 'b2b', 'gerente_b2c' => 'b2c', 'gerente_enoturismo' => 'enoturismo']; }
+function ia_areas() {
+    $a = ['geral' => 'Gerente geral', 'b2b' => 'Comercial B2B', 'b2c' => 'Comercial B2C', 'enoturismo' => 'Enoturismo e eventos'];
+    if (function_exists('cd_v15') && cd_v15()) $a['financeiro'] = 'Financeiro';   // v15: cobranças das entregas do CD
+    return $a;
+}
+function ia_perfil_area() { return ['gerente_geral' => 'geral', 'gerente_b2b' => 'b2b', 'gerente_b2c' => 'b2c', 'gerente_enoturismo' => 'enoturismo'] + (function_exists('cd_v15') && cd_v15() ? ['financeiro' => 'financeiro'] : []); }
 // Áreas que um usuário vê: Administrador e Gerente geral veem todas; cada gerente vê a sua.
 function ia_areas_de($perfis) {
     $p = expandir_perfis($perfis);
@@ -166,7 +170,7 @@ function ia_gerar_alertas($forcar = false) {
     if (!$forcar && $ultima && strtotime($ultima) > time() - 3600 && $aud <= (int)config('ia_ultima_auditoria', '0') && config('ia_versao', '') === APP_VERSAO) return [];
     @set_time_limit(120);
     $erros = [];
-    foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral', 'ia_r_campanhas'] as $f) {
+    foreach (['ia_r_tours', 'ia_r_datas', 'ia_r_b2c', 'ia_r_b2b', 'ia_r_geral', 'ia_r_campanhas', 'ia_r_financeiro'] as $f) {
         try { $f(); } catch (Throwable $ex) { $erros[] = $f . ': ' . $ex->getMessage(); }
     }
     config_salvar('ia_ultima_regra', date('Y-m-d H:i:s'));
@@ -423,6 +427,26 @@ function ia_r_geral() {
 }
 
 // Campanhas liberadas nos grupos: um cartão por dia em "Para hoje" enquanto houver clientes na fila.
+// Financeiro: vinícolas com entregas de meses fechados ainda sem comprovante de pagamento (Financeiro e Gerente geral).
+function ia_r_financeiro() {
+    if (!function_exists('cd_v15') || !cd_v15()) return;
+    $hoje = date('Y-m-d'); $chave = 'cd_pagamentos:' . $hoje;
+    $pend = array_values(array_filter(cd_cobrancas('pendentes'), fn($c) => (float)$c['total'] > 0));
+    if (!$pend) { ia_cartao_retirar($chave); return; }
+    $tot = array_sum(array_map(fn($c) => (float)$c['total'], $pend));
+    $venc = array_filter($pend, fn($c) => cd_dias_atraso($c) > 0);
+    $totV = array_sum(array_map(fn($c) => (float)$c['total'], $venc));
+    $vin = count(array_unique(array_map(fn($c) => (int)$c['vinicola_id'], $pend)));
+    $itens = array_map(fn($c) => ['rot' => ($c['vinicola'] ?: 'Vinícola #' . $c['vinicola_id']) . ' · ' . rotulo_mes($c['mes']) . ' · ' . brl($c['total']),
+        'detalhe' => cd_situacao_rotulo($c) . ' · ' . (int)$c['qtd'] . ' entrega(s) · ' . ($c['extrato_em'] ? 'extrato enviado em ' . date('d/m', strtotime($c['extrato_em'])) : 'extrato ainda não enviado'),
+        'link' => 'cd_pagamentos.php#cob-' . (int)$c['id']], $pend);
+    $itens[] = ['rot' => 'Total em aberto: ' . brl($tot) . ($venc ? ' · vencido: ' . brl($totV) : ''), 'detalhe' => 'Financeiro: cobrar as vinícolas e anexar o comprovante quando pagarem.'];
+    ia_cartao(['chave' => $chave, 'area' => 'financeiro', 'tipo' => 'cd_pagamentos', 'prioridade' => $venc ? 'alta' : 'media',
+        'titulo' => 'Pagamentos de entregas pendentes: ' . $vin . ' vinícola(s) · ' . brl($tot),
+        'texto' => ($venc ? count($venc) . ' cobrança(s) vencida(s), somando ' . brl($totV) . '. ' : '') . 'O alerta só sai quando a baixa for dada com o comprovante de pagamento anexado (Centro de Distribuição › Baixa Pagamentos Entregas).',
+        'dados' => ['itens' => $itens], 'link' => 'cd_pagamentos.php', 'valido_ate' => $hoje]);
+}
+
 function ia_r_campanhas() {
     if (!function_exists('camp_v11') || !camp_v11()) return;
     $hoje = date('Y-m-d');

@@ -1,19 +1,22 @@
 <?php
 require __DIR__ . '/inc/app.php';
 exigir_login();
-if (!pode_ver_cd_gestao()) negar();
+if (!pode_ver_cd_gestao() && !pode_ver_cd_pagamentos()) negar();
+$soV = (int)($_GET['v'] ?? 0);   // extrato de uma vinícola só (vindo da Baixa Pagamentos Entregas)
 $pdo = db();
 $mes = preg_match('/^\d{4}-\d{2}$/', $_GET['mes'] ?? '') ? $_GET['mes'] : date('Y-m');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    exigir_cd_edicao();
+    if (!pode_cd_editar() && !pode_baixar_cd()) negar();
     $ok = enviar_extrato_cd((int)($_POST['vinicola_id'] ?? 0), $mes);
     flash($ok ? 'Extrato enviado.' : 'Não foi possível enviar (vinícola sem e-mail válido ou falha no servidor).', $ok ? 'ok' : 'erro');
-    ir('cd_extrato.php?mes=' . $mes);
+    $volta = $_POST['volta'] ?? '';
+    ir($volta === 'pagamentos' ? 'cd_pagamentos.php' : 'cd_extrato.php?mes=' . $mes . ($soV ? '&v=' . $soV : ''));
 }
 
 $vinicolas = $pdo->query('SELECT * FROM cd_vinicolas ORDER BY nome')->fetchAll();
+if ($soV) $vinicolas = array_values(array_filter($vinicolas, fn($v) => (int)$v['id'] === $soV));
 $se = $pdo->prepare('SELECT vinicola_id, enviado_em FROM cd_extratos WHERE mes = ?'); $se->execute([$mes]);
 $enviados = $se->fetchAll(PDO::FETCH_KEY_PAIR);
 $geral = ['qtd' => 0, 'total' => 0.0];
@@ -31,9 +34,10 @@ $titulo = 'CD · Extrato mensal';
 require __DIR__ . '/inc/topo.php';
 ?>
 <div class="filtro nao-imprimir">
-  <a class="btn sec" href="cd_extrato.php?mes=<?= $ant ?>">‹</a>
-  <form method="get"><input type="month" name="mes" value="<?= e($mes) ?>" onchange="this.form.submit()"></form>
-  <a class="btn sec" href="cd_extrato.php?mes=<?= $prox ?>">›</a>
+  <a class="btn sec" href="cd_extrato.php?mes=<?= $ant ?><?= $soV ? '&v=' . $soV : '' ?>">‹</a>
+  <form method="get"><input type="month" name="mes" value="<?= e($mes) ?>" onchange="this.form.submit()"><?php if ($soV): ?><input type="hidden" name="v" value="<?= $soV ?>"><?php endif; ?></form>
+  <?php if ($soV): ?><a class="btn sec" href="cd_extrato.php?mes=<?= e($mes) ?>">Todas as vinícolas</a><?php endif; ?>
+  <a class="btn sec" href="cd_extrato.php?mes=<?= $prox ?><?= $soV ? '&v=' . $soV : '' ?>">›</a>
   <button type="button" onclick="window.print()">Imprimir / salvar PDF</button>
 </div>
 <p class="sub"><?= e(rotulo_mes($mes)) ?> · entregas concluídas no mês · <?= $geral['qtd'] ?> entrega(s) · total a receber <?= brl($geral['total']) ?></p>
@@ -57,8 +61,8 @@ require __DIR__ . '/inc/topo.php';
   </tbody>
 </table></div>
 <div class="acoes nao-imprimir">
-  <?php if (pode_cd_editar()): ?>
-  <form method="post" action="cd_extrato.php?mes=<?= e($mes) ?>" onsubmit="return confirm('Enviar o extrato por e-mail ao responsável?')">
+  <?php if (pode_cd_editar() || pode_baixar_cd()): ?>
+  <form method="post" action="cd_extrato.php?mes=<?= e($mes) ?><?= $soV ? '&v=' . $soV : '' ?>" onsubmit="return confirm('Enviar o extrato por e-mail ao responsável?')">
     <?= csrf_campo() ?><input type="hidden" name="vinicola_id" value="<?= (int)$v['id'] ?>">
     <button class="peq"><?= isset($enviados[$v['id']]) ? 'Reenviar extrato por e-mail' : 'Enviar extrato por e-mail' ?></button>
   </form>
